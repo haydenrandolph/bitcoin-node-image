@@ -4,23 +4,15 @@ set -e
 IMAGE=$1
 BOOTSTRAP_RPC=$2
 
-# Setup loop device and capture exact output
 sudo losetup -fP "$IMAGE"
 LOOP=$(sudo losetup -j "$IMAGE" | awk -F':' '{print $1}' | head -n1)
-
 echo "Loop device is: $LOOP"
-
-# Wait briefly for partition devices
 sleep 5
 
 BOOT="/mnt/pi_boot"
 ROOT="/mnt/pi_root"
 mkdir -p $BOOT $ROOT
 
-# Check partitions explicitly
-lsblk "${LOOP}"
-
-# Mount partitions explicitly
 sudo mount "${LOOP}p2" $ROOT
 sudo mount "${LOOP}p1" $ROOT/boot
 
@@ -29,14 +21,21 @@ sudo mount --bind /dev $ROOT/dev
 sudo mount --bind /proc $ROOT/proc
 sudo mount --bind /sys $ROOT/sys
 
-# Chroot customization
-sudo chroot $ROOT /bin/bash <<'EOF'
-apt update && apt upgrade -y
-apt install -y curl wget ufw fail2ban tor git python3-pip htop
+# Copy bootstrap script explicitly
+sudo cp "$BOOTSTRAP_RPC" $ROOT/boot/bootstrap-rpc-creds.sh
+sudo chmod +x $ROOT/boot/bootstrap-rpc-creds.sh
 
+sudo chroot $ROOT /bin/bash <<'EOF'
+apt update
+apt upgrade -y --fix-missing || true
+apt --fix-broken install -y
+
+apt install -y curl wget git python3-pip htop ufw fail2ban tor iptables
+
+# Bitcoin Core correct URL
 BITCOIN_VERSION=25.1
 cd /tmp
-wget https://bitcoin.org/bin/bitcoin-core-${BITCOIN_VERSION}/bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz
+wget https://bitcoincore.org/bin/bitcoin-core-${BITCOIN_VERSION}/bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz
 tar -xvf bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz
 install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin/*
 rm -rf bitcoin-${BITCOIN_VERSION}*
@@ -104,9 +103,6 @@ systemctl enable bootstrap-rpc-creds.service
 apt clean
 EOF
 
-sudo cp "$BOOTSTRAP_RPC" $ROOT/boot/bootstrap-rpc-creds.sh
-
-# Cleanup mounts
 sudo umount $ROOT/{dev,proc,sys,boot}
 sudo umount $ROOT
 sudo losetup -d "$LOOP"
