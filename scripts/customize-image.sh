@@ -4,22 +4,25 @@ set -e
 IMAGE=$1
 BOOTSTRAP_RPC=$2
 
-LOOP=$(sudo kpartx -av "$IMAGE" | head -n1 | cut -d' ' -f3 | sed 's/p[0-9]//')
-echo "Loop device is: /dev/mapper/${LOOP}"
+# Setup loop device and capture exact output
+sudo losetup -fP "$IMAGE"
+LOOP=$(sudo losetup -j "$IMAGE" | awk -F':' '{print $1}' | head -n1)
 
-# Give loop partitions a moment to settle
+echo "Loop device is: $LOOP"
+
+# Wait briefly for partition devices
 sleep 5
 
 BOOT="/mnt/pi_boot"
 ROOT="/mnt/pi_root"
 mkdir -p $BOOT $ROOT
 
-# Ensure the loop devices exist
-ls -l /dev/mapper/${LOOP}*
+# Check partitions explicitly
+lsblk "${LOOP}"
 
 # Mount partitions explicitly
-sudo mount "/dev/mapper/${LOOP}p2" $ROOT
-sudo mount "/dev/mapper/${LOOP}p1" $ROOT/boot
+sudo mount "${LOOP}p2" $ROOT
+sudo mount "${LOOP}p1" $ROOT/boot
 
 sudo cp /usr/bin/qemu-aarch64-static $ROOT/usr/bin/
 sudo mount --bind /dev $ROOT/dev
@@ -54,7 +57,7 @@ CONF
 chown bitcoin:bitcoin /home/bitcoin/.bitcoin/bitcoin.conf
 chmod 600 /home/bitcoin/.bitcoin/bitcoin.conf
 
-# Setup Bitcoin service
+# Bitcoin service
 cat <<SERVICE >/etc/systemd/system/bitcoind.service
 [Unit]
 Description=Bitcoin daemon
@@ -82,7 +85,6 @@ systemctl enable fail2ban
 
 install -m 0755 /boot/bootstrap-rpc-creds.sh /usr/local/bin/bootstrap-rpc-creds.sh
 
-# Bootstrap service
 cat <<RPC >/etc/systemd/system/bootstrap-rpc-creds.service
 [Unit]
 Description=Bootstrap RPC Credentials for Bitcoin
@@ -107,4 +109,4 @@ sudo cp "$BOOTSTRAP_RPC" $ROOT/boot/bootstrap-rpc-creds.sh
 # Cleanup mounts
 sudo umount $ROOT/{dev,proc,sys,boot}
 sudo umount $ROOT
-sudo kpartx -dv "$IMAGE"
+sudo losetup -d "$LOOP"
