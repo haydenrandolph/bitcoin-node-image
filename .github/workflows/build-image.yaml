@@ -1,0 +1,42 @@
+name: Build Bitcoin Node Raspberry Pi Image
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qemu-user-static binfmt-support kpartx xz-utils curl git
+
+    - name: Download Raspberry Pi OS Lite
+      run: |
+        curl -LO https://downloads.raspberrypi.org/raspios_lite_arm64_latest
+        unzip raspios_lite_arm64_latest
+        rm raspios_lite_arm64_latest
+        mv *.img raspi-custom.img
+
+    - name: Mount and Customize OS Image
+      run: |
+        chmod +x scripts/customize-image.sh scripts/bootstrap-rpc-creds.sh
+        sudo scripts/customize-image.sh raspi-custom.img scripts/bootstrap-rpc-creds.sh
+
+    - name: Compress image
+      run: |
+        xz -T0 raspi-custom.img
+
+    - name: Upload customized image
+      uses: actions/upload-artifact@v4
+      with:
+        name: raspberry-pi-bitcoin-node
+        path: raspi-custom.img.xz
