@@ -21,9 +21,8 @@ jobs:
 
     - name: Download Raspberry Pi OS Lite
       run: |
-        curl -LO https://downloads.raspberrypi.org/raspios_lite_arm64_latest
-        unzip raspios_lite_arm64_latest
-        rm raspios_lite_arm64_latest
+        curl -L -o raspios.img.xz https://downloads.raspberrypi.org/raspios_lite_arm64_latest
+        unxz raspios.img.xz
         mv *.img raspi-custom.img
 
     - name: Mount and Customize OS Image
