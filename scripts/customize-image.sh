@@ -5,11 +5,21 @@ IMAGE=$1
 BOOTSTRAP_RPC=$2
 
 LOOP=$(sudo kpartx -av "$IMAGE" | head -n1 | cut -d' ' -f3 | sed 's/p[0-9]//')
+echo "Loop device is: /dev/mapper/${LOOP}"
+
+# Give loop partitions a moment to settle
+sleep 5
+
 BOOT="/mnt/pi_boot"
 ROOT="/mnt/pi_root"
 mkdir -p $BOOT $ROOT
-sudo mount /dev/mapper/${LOOP}p2 $ROOT
-sudo mount /dev/mapper/${LOOP}p1 $ROOT/boot
+
+# Ensure the loop devices exist
+ls -l /dev/mapper/${LOOP}*
+
+# Mount partitions explicitly
+sudo mount "/dev/mapper/${LOOP}p2" $ROOT
+sudo mount "/dev/mapper/${LOOP}p1" $ROOT/boot
 
 sudo cp /usr/bin/qemu-aarch64-static $ROOT/usr/bin/
 sudo mount --bind /dev $ROOT/dev
@@ -32,7 +42,6 @@ adduser --disabled-password --gecos "" bitcoin
 mkdir -p /home/bitcoin/.bitcoin
 chown bitcoin:bitcoin /home/bitcoin/.bitcoin
 
-# Basic bitcoin.conf with placeholder (filled dynamically on boot)
 cat <<CONF >/home/bitcoin/.bitcoin/bitcoin.conf
 server=1
 daemon=1
@@ -71,10 +80,9 @@ ufw allow 8333
 ufw enable
 systemctl enable fail2ban
 
-# Bootstrap RPC creds
 install -m 0755 /boot/bootstrap-rpc-creds.sh /usr/local/bin/bootstrap-rpc-creds.sh
 
-# Service to run bootstrap on first boot
+# Bootstrap service
 cat <<RPC >/etc/systemd/system/bootstrap-rpc-creds.service
 [Unit]
 Description=Bootstrap RPC Credentials for Bitcoin
@@ -96,6 +104,7 @@ EOF
 
 sudo cp "$BOOTSTRAP_RPC" $ROOT/boot/bootstrap-rpc-creds.sh
 
+# Cleanup mounts
 sudo umount $ROOT/{dev,proc,sys,boot}
 sudo umount $ROOT
 sudo kpartx -dv "$IMAGE"
