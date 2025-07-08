@@ -35,6 +35,11 @@ sudo mount --bind /dev $ROOT/dev
 sudo mount --bind /proc $ROOT/proc
 sudo mount --bind /sys $ROOT/sys
 
+# ----------- New: Copy firstboot wizard and systemd unit before chroot -------------
+sudo cp scripts/firstboot-setup.sh $ROOT/boot/firstboot-setup.sh
+sudo cp scripts/firstboot-setup.service $ROOT/boot/firstboot-setup.service
+# -----------------------------------------------------------------------------------
+
 # Step 7: Copy bootstrap script before chroot
 sudo cp "$BOOTSTRAP_RPC" $ROOT/boot/bootstrap-rpc-creds.sh
 sudo chmod +x $ROOT/boot/bootstrap-rpc-creds.sh
@@ -56,7 +61,7 @@ apt --fix-broken install -y || true
 # Required packages
 apt install -y --no-install-recommends \
     curl wget git ufw fail2ban tor iptables \
-    python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man
+    python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo
 
 echo "🪙 Installing Bitcoin Core..."
 BITCOIN_VERSION=25.1
@@ -122,6 +127,12 @@ WantedBy=multi-user.target
 RPC
 
 systemctl enable bootstrap-rpc-creds.service
+
+# ----------- New: Install firstboot wizard and enable systemd oneshot ---------------
+install -m 0755 /boot/firstboot-setup.sh /usr/local/bin/firstboot-setup.sh
+cat /boot/firstboot-setup.service > /etc/systemd/system/firstboot-setup.service
+systemctl enable firstboot-setup.service
+# ------------------------------------------------------------------------------------
 
 # Cleanup
 apt-get clean
