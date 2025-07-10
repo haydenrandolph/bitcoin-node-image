@@ -64,7 +64,7 @@ apt install -y --no-install-recommends \
     curl wget git ufw fail2ban tor iptables \
     python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo
 
-# ----------- Install Node.js 20 LTS (for flotilla) -----------
+# ----------- Install Node.js 20 LTS (for flotilla and backend) -----------
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 # -------------------------------------------------------------
@@ -169,6 +169,7 @@ systemctl enable flotilla.service
 # ----------- Install Bitcoin Node API server (Express.js) ------------------------
 mkdir -p /home/bitcoin/server
 cp -r /boot/server/* /home/bitcoin/server/
+chown -R bitcoin:bitcoin /home/bitcoin/server   # <--- FIXED!
 cd /home/bitcoin/server
 sudo -u bitcoin npm install
 
