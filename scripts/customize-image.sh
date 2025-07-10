@@ -35,14 +35,15 @@ sudo mount --bind /dev $ROOT/dev
 sudo mount --bind /proc $ROOT/proc
 sudo mount --bind /sys $ROOT/sys
 
-# ----------- New: Copy firstboot wizard and systemd unit before chroot -------------
+# ----------- Copy scripts/server files for later chroot install -------------
 sudo cp scripts/firstboot-setup.sh $ROOT/boot/firstboot-setup.sh
 sudo cp scripts/firstboot-setup.service $ROOT/boot/firstboot-setup.service
-# -----------------------------------------------------------------------------------
-
-# Step 7: Copy bootstrap script before chroot
 sudo cp "$BOOTSTRAP_RPC" $ROOT/boot/bootstrap-rpc-creds.sh
 sudo chmod +x $ROOT/boot/bootstrap-rpc-creds.sh
+
+# Copy backend and systemd unit
+sudo cp -r server $ROOT/boot/server
+sudo cp scripts/btcnode-api.service $ROOT/boot/btcnode-api.service
 
 # Step 8: Chroot customization
 sudo chroot $ROOT /bin/bash <<'EOF'
@@ -133,7 +134,6 @@ systemctl enable bootstrap-rpc-creds.service
 install -m 0755 /boot/firstboot-setup.sh /usr/local/bin/firstboot-setup.sh
 cat /boot/firstboot-setup.service > /etc/systemd/system/firstboot-setup.service
 systemctl enable firstboot-setup.service
-# ------------------------------------------------------------------------------------
 
 # ----------- Install Flotilla Nostr Web UI and enable systemd service -----------
 cd /home/bitcoin
@@ -160,6 +160,21 @@ WantedBy=multi-user.target
 FLOTILLA_SERVICE
 
 systemctl enable flotilla.service
+# ------------------------------------------------------------------------------------
+
+# ----------- Install Bitcoin Node API server (Express.js) ------------------------
+mkdir -p /home/bitcoin/server
+cp -r /boot/server/* /home/bitcoin/server/
+cd /home/bitcoin/server
+sudo -u bitcoin npm install nostr-tools express bitcoin-core
+
+# Copy and enable systemd service
+cp /boot/btcnode-api.service /etc/systemd/system/btcnode-api.service
+systemctl enable btcnode-api.service
+
+# Ensure correct ownership
+chown -R bitcoin:bitcoin /home/bitcoin/server
+
 # ------------------------------------------------------------------------------------
 
 # Cleanup

@@ -1,0 +1,12 @@
+[Unit]
+Description=Bitcoin Node API Server
+After=network.target
+
+[Service]
+WorkingDirectory=/home/bitcoin/server
+ExecStart=/usr/bin/node /home/bitcoin/server/server.js
+User=bitcoin
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
