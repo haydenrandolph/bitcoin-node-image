@@ -59,11 +59,15 @@ apt-mark hold linux-headers-* linux-image-* rpi-eeprom || true
 apt upgrade -y || true
 apt --fix-broken install -y || true
 
-# Required packages
+# Required packages (except nodejs)
 apt install -y --no-install-recommends \
     curl wget git ufw fail2ban tor iptables \
-    python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo \
-    nodejs npm
+    python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo
+
+# ----------- Install Node.js 20 LTS (for flotilla) -----------
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y nodejs
+# -------------------------------------------------------------
 
 echo "🪙 Installing Bitcoin Core..."
 BITCOIN_VERSION=25.1
@@ -166,7 +170,7 @@ systemctl enable flotilla.service
 mkdir -p /home/bitcoin/server
 cp -r /boot/server/* /home/bitcoin/server/
 cd /home/bitcoin/server
-sudo -u bitcoin npm install nostr-tools express bitcoin-core
+sudo -u bitcoin npm install
 
 # Copy and enable systemd service
 cp /boot/btcnode-api.service /etc/systemd/system/btcnode-api.service
