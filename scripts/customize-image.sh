@@ -61,7 +61,8 @@ apt --fix-broken install -y || true
 # Required packages
 apt install -y --no-install-recommends \
     curl wget git ufw fail2ban tor iptables \
-    python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo
+    python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo \
+    nodejs npm
 
 echo "🪙 Installing Bitcoin Core..."
 BITCOIN_VERSION=25.1
@@ -128,10 +129,37 @@ RPC
 
 systemctl enable bootstrap-rpc-creds.service
 
-# ----------- New: Install firstboot wizard and enable systemd oneshot ---------------
+# ----------- Install firstboot wizard and enable systemd oneshot ---------------
 install -m 0755 /boot/firstboot-setup.sh /usr/local/bin/firstboot-setup.sh
 cat /boot/firstboot-setup.service > /etc/systemd/system/firstboot-setup.service
 systemctl enable firstboot-setup.service
+# ------------------------------------------------------------------------------------
+
+# ----------- Install Flotilla Nostr Web UI and enable systemd service -----------
+cd /home/bitcoin
+if [ ! -d "/home/bitcoin/flotilla" ]; then
+  sudo -u bitcoin git clone https://github.com/coracle-social/flotilla.git
+fi
+cd flotilla
+sudo -u bitcoin npm install
+sudo -u bitcoin npm run build
+sed -i '/"start":/c\    "start": "vite preview --host 0.0.0.0",' package.json
+cat <<FLOTILLA_SERVICE >/etc/systemd/system/flotilla.service
+[Unit]
+Description=Flotilla Nostr Web UI
+After=network.target
+
+[Service]
+WorkingDirectory=/home/bitcoin/flotilla
+ExecStart=/usr/bin/npm run start
+User=bitcoin
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+FLOTILLA_SERVICE
+
+systemctl enable flotilla.service
 # ------------------------------------------------------------------------------------
 
 # Cleanup
