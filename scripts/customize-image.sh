@@ -81,8 +81,12 @@ echo '@unclutter -idle 1' >> /home/bitcoin/.config/lxsession/LXDE-pi/autostart
 if ! id bitcoin &>/dev/null; then
   adduser --disabled-password --gecos "" bitcoin
 fi
+# Always create home and give ownership just in case
+mkdir -p /home/bitcoin
+chown bitcoin:bitcoin /home/bitcoin
 mkdir -p /home/bitcoin/.bitcoin
 chown -R bitcoin:bitcoin /home/bitcoin/.bitcoin
+mkdir -p /home/bitcoin/.config
 chown -R bitcoin:bitcoin /home/bitcoin/.config
 
 # ----------- Install Node.js 20 LTS (for flotilla and backend) -----------
