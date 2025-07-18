@@ -64,6 +64,27 @@ apt install -y --no-install-recommends \
     curl wget git ufw fail2ban tor iptables \
     python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo ca-certificates
 
+# ----------- Add desktop & browser for local HDMI experience -----------
+apt install -y --no-install-recommends xserver-xorg xinit raspberrypi-ui-mods chromium-browser unclutter
+
+# Autologin for the bitcoin user to desktop
+if ! grep -q "autologin-user=bitcoin" /etc/lightdm/lightdm.conf; then
+  sed -i '/^#*autologin-user=/c\autologin-user=bitcoin' /etc/lightdm/lightdm.conf
+fi
+
+# Set Chromium to autostart in kiosk mode
+mkdir -p /home/bitcoin/.config/lxsession/LXDE-pi/
+echo '@chromium-browser --kiosk --incognito --noerrdialogs --disable-infobars http://localhost:3000' >> /home/bitcoin/.config/lxsession/LXDE-pi/autostart
+echo '@unclutter -idle 1' >> /home/bitcoin/.config/lxsession/LXDE-pi/autostart
+
+# ----------- Add bitcoin user if not exists ---------
+if ! id bitcoin &>/dev/null; then
+  adduser --disabled-password --gecos "" bitcoin
+fi
+mkdir -p /home/bitcoin/.bitcoin
+chown -R bitcoin:bitcoin /home/bitcoin/.bitcoin
+chown -R bitcoin:bitcoin /home/bitcoin/.config
+
 # ----------- Install Node.js 20 LTS (for flotilla and backend) -----------
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
@@ -105,13 +126,6 @@ wget https://bitcoincore.org/bin/bitcoin-core-${BITCOIN_VERSION}/bitcoin-${BITCO
 tar -xvf bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz
 install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin/*
 rm -rf bitcoin-${BITCOIN_VERSION}*
-
-# Add bitcoin user if not exists
-if ! id bitcoin &>/dev/null; then
-  adduser --disabled-password --gecos "" bitcoin
-fi
-mkdir -p /home/bitcoin/.bitcoin
-chown -R bitcoin:bitcoin /home/bitcoin/.bitcoin
 
 # Placeholder bitcoin.conf (patched at boot)
 cat <<CONF >/home/bitcoin/.bitcoin/bitcoin.conf
