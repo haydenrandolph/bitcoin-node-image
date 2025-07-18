@@ -62,12 +62,41 @@ apt --fix-broken install -y || true
 # Required packages (except nodejs)
 apt install -y --no-install-recommends \
     curl wget git ufw fail2ban tor iptables \
-    python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo
+    python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo ca-certificates
 
 # ----------- Install Node.js 20 LTS (for flotilla and backend) -----------
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
-# -------------------------------------------------------------
+npm install -g npm@latest
+
+# ----------- Install Docker and Docker Compose for BTCPay ----------------------
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+usermod -aG docker bitcoin
+apt-get install -y docker-compose-plugin
+
+# ----------- Clone BTCPayServer repo (docker, ARM-ready) ----------------------
+sudo -u bitcoin mkdir -p /home/bitcoin/btcpayserver
+cd /home/bitcoin/btcpayserver
+if [ ! -d "/home/bitcoin/btcpayserver/btcpayserver-docker" ]; then
+  sudo -u bitcoin git clone https://github.com/btcpayserver/btcpayserver-docker.git
+fi
+chown -R bitcoin:bitcoin /home/bitcoin/btcpayserver
+
+# ----------- BTCPay easy startup script ---------------------------------------
+cat <<'BTSH' >/home/bitcoin/btcpayserver/start-btcpay.sh
+#!/bin/bash
+cd /home/bitcoin/btcpayserver/btcpayserver-docker
+export BTCPAY_HOST="pi.local"
+export NBITCOIN_NETWORK="mainnet"
+export BTCPAYGEN_CRYPTO1="btc"
+export BTCPAYGEN_REVERSEPROXY="nginx"
+export BTCPAYGEN_LIGHTNING="none"
+. ./btcpay-setup.sh -i
+BTSH
+chmod +x /home/bitcoin/btcpayserver/start-btcpay.sh
+chown bitcoin:bitcoin /home/bitcoin/btcpayserver/start-btcpay.sh
+# -------------------------------------------------------------------------------
 
 echo "🪙 Installing Bitcoin Core..."
 BITCOIN_VERSION=25.1
@@ -77,8 +106,10 @@ tar -xvf bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz
 install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin/*
 rm -rf bitcoin-${BITCOIN_VERSION}*
 
-# Add bitcoin user
-adduser --disabled-password --gecos "" bitcoin
+# Add bitcoin user if not exists
+if ! id bitcoin &>/dev/null; then
+  adduser --disabled-password --gecos "" bitcoin
+fi
 mkdir -p /home/bitcoin/.bitcoin
 chown -R bitcoin:bitcoin /home/bitcoin/.bitcoin
 
@@ -144,7 +175,7 @@ cd /home/bitcoin
 if [ ! -d "/home/bitcoin/flotilla" ]; then
   sudo -u bitcoin git clone https://github.com/coracle-social/flotilla.git
 fi
-cd flotilla
+cd /home/bitcoin/flotilla
 sudo -u bitcoin npm install
 sudo -u bitcoin npm run build
 sed -i '/"start":/c\    "start": "vite preview --host 0.0.0.0",' package.json
@@ -164,12 +195,11 @@ WantedBy=multi-user.target
 FLOTILLA_SERVICE
 
 systemctl enable flotilla.service
-# ------------------------------------------------------------------------------------
 
 # ----------- Install Bitcoin Node API server (Express.js) ------------------------
 mkdir -p /home/bitcoin/server
 cp -r /boot/server/* /home/bitcoin/server/
-chown -R bitcoin:bitcoin /home/bitcoin/server   # <--- FIXED!
+chown -R bitcoin:bitcoin /home/bitcoin/server
 cd /home/bitcoin/server
 sudo -u bitcoin npm install
 

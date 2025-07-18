@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bitcoin Pi Node Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <script defer src="main.js"></script>
+</head>
+<body>
+  <h1>🟢 Bitcoin Pi Node Dashboard</h1>
+  <div id="status"></div>
+  <section>
+    <h2>WiFi Setup</h2>
+    <form id="wifi-form">
+      SSID: <input type="text" name="ssid" required />
+      Password: <input type="password" name="psk" required />
+      <button type="submit">Update WiFi</button>
+    </form>
+    <div id="wifi-result"></div>
+  </section>
+  <section>
+    <h2>Bitcoin Node Config</h2>
+    <form id="btc-form">
+      Max Connections: <input type="number" name="maxconnections" value="40" />
+      dbcache (MB): <input type="number" name="dbcache" value="1000" />
+      Prune (leave blank for full node): <input type="number" name="prune" />
+      <button type="submit">Update Bitcoin Config</button>
+    </form>
+    <div id="btc-result"></div>
+    <div id="bitcoin"></div>
+  </section>
+  <section>
+    <h2>Nostr Identity</h2>
+    <div id="nostr-identity"></div>
+    <button id="generate-nostr">Generate New Nostr Key</button>
+  </section>
+  <section>
+    <h2>BTCPay Server</h2>
+    <button id="start-btcpay">Start BTCPay Server</button>
+    <div id="btcpay-result"></div>
+  </section>
+  <section>
+    <h2>Nostr Messaging</h2>
+    <a href="http://localhost:5173" target="_blank">
+      <button>Open Flotilla Nostr Client</button>
+    </a>
+  </section>
+</body>
+</html>
