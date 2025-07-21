@@ -81,15 +81,17 @@ sudo cp -r server $ROOT/boot/server
 sudo cp scripts/btcnode-api.service $ROOT/boot/btcnode-api.service
 
 # Step 8: Chroot customization
+echo "🚀 Starting chroot customization..."
 sudo chroot $ROOT /bin/bash << 'CHROOT_EOF'
 set -e
 
+echo "🔧 Step 1: Setting up chroot environment..."
 # Prevent services from starting in chrooted apt operations
 echo -e '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d
 chmod +x /usr/sbin/policy-rc.d
 export DEBIAN_FRONTEND=noninteractive
 
-echo "📦 Updating packages (no kernel bloat)..."
+echo "📦 Step 2: Updating packages..."
 apt update
 
 # Prevent bloated kernel header upgrades
@@ -99,14 +101,15 @@ apt-mark hold linux-headers-* linux-image-* rpi-eeprom || true
 apt upgrade -y || true
 apt --fix-broken install -y || true
 
+echo "📦 Step 3: Installing required packages..."
 # Required packages (except nodejs)
-apt install -y --no-install-recommends \
-    curl wget git ufw fail2ban tor iptables \
-    python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo ca-certificates
+apt install -y --no-install-recommends curl wget git ufw fail2ban tor iptables python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo ca-certificates
 
+echo "🖥️ Step 4: Installing desktop environment..."
 # ----------- Add desktop & browser for local HDMI experience -----------
 apt install -y --no-install-recommends xserver-xorg xinit raspberrypi-ui-mods chromium-browser unclutter
 
+echo "👤 Step 5: Setting up bitcoin user and desktop..."
 # Autologin for the bitcoin user to desktop
 if ! grep -q "autologin-user=bitcoin" /etc/lightdm/lightdm.conf; then
   sed -i '/^#*autologin-user=/c\autologin-user=bitcoin' /etc/lightdm/lightdm.conf
@@ -129,17 +132,20 @@ chown -R bitcoin:bitcoin /home/bitcoin/.bitcoin
 mkdir -p /home/bitcoin/.config
 chown -R bitcoin:bitcoin /home/bitcoin/.config
 
+echo "🟢 Step 6: Installing Node.js..."
 # ----------- Install Node.js 20 LTS (for flotilla and backend) -----------
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 npm install -g npm@latest
 
+echo "🐳 Step 7: Installing Docker..."
 # ----------- Install Docker and Docker Compose for BTCPay ----------------------
 curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
 usermod -aG docker bitcoin
 apt-get install -y docker-compose-plugin
 
+echo "💰 Step 8: Setting up BTCPay Server..."
 # ----------- Clone BTCPayServer repo (docker, ARM-ready) ----------------------
 sudo -u bitcoin mkdir -p /home/bitcoin/btcpayserver
 cd /home/bitcoin/btcpayserver
@@ -148,6 +154,7 @@ if [ ! -d "/home/bitcoin/btcpayserver/btcpayserver-docker" ]; then
 fi
 chown -R bitcoin:bitcoin /home/bitcoin/btcpayserver
 
+echo "📜 Step 9: Creating BTCPay startup script..."
 # ----------- BTCPay easy startup script ---------------------------------------
 echo "#!/bin/bash" > /home/bitcoin/btcpayserver/start-btcpay.sh
 echo "cd /home/bitcoin/btcpayserver/btcpayserver-docker" >> /home/bitcoin/btcpayserver/start-btcpay.sh
@@ -161,7 +168,8 @@ chmod +x /home/bitcoin/btcpayserver/start-btcpay.sh
 chown bitcoin:bitcoin /home/bitcoin/btcpayserver/start-btcpay.sh
 # -------------------------------------------------------------------------------
 
-echo "🪙 Installing Bitcoin Core..."
+echo "🪙 Step 10: Installing Bitcoin Core..."
+# ----------- Install Bitcoin Core -----------------------------------------------
 BITCOIN_VERSION=25.1
 cd /tmp
 wget https://bitcoincore.org/bin/bitcoin-core-${BITCOIN_VERSION}/bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz || echo "Warning: Bitcoin download failed"
@@ -169,6 +177,7 @@ tar -xvf bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz || echo "Warning: B
 install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin/* || echo "Warning: Bitcoin install failed"
 rm -rf bitcoin-${BITCOIN_VERSION}*
 
+echo "⚙️ Step 11: Setting up Bitcoin configuration..."
 # Placeholder bitcoin.conf (patched at boot)
 echo "server=1" > /home/bitcoin/.bitcoin/bitcoin.conf
 echo "daemon=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
@@ -180,6 +189,7 @@ echo "rpcallowip=127.0.0.1" >> /home/bitcoin/.bitcoin/bitcoin.conf
 chown bitcoin:bitcoin /home/bitcoin/.bitcoin/bitcoin.conf
 chmod 600 /home/bitcoin/.bitcoin/bitcoin.conf
 
+echo "🔧 Step 12: Creating systemd services..."
 # bitcoind systemd service
 echo "[Unit]" > /etc/systemd/system/bitcoind.service
 echo "Description=Bitcoin daemon" >> /etc/systemd/system/bitcoind.service
@@ -198,6 +208,7 @@ echo "WantedBy=multi-user.target" >> /etc/systemd/system/bitcoind.service
 
 systemctl enable bitcoind.service
 
+echo "🔐 Step 13: Setting up bootstrap RPC credentials..."
 # Bootstrap RPC credentials service
 echo "🔍 Debug: Installing bootstrap script..."
 ls -la /boot/bootstrap-rpc-creds.sh || echo "❌ Bootstrap script not found in /boot"
@@ -242,11 +253,13 @@ else
     exit 1
 fi
 
+echo "🔧 Step 14: Setting up firstboot wizard..."
 # ----------- Install firstboot wizard and enable systemd oneshot ---------------
 install -m 0755 /boot/firstboot-setup.sh /usr/local/bin/firstboot-setup.sh
 cat /boot/firstboot-setup.service > /etc/systemd/system/firstboot-setup.service
 systemctl enable firstboot-setup.service
 
+echo "🌐 Step 15: Installing Flotilla Nostr Web UI..."
 # ----------- Install Flotilla Nostr Web UI and enable systemd service -----------
 cd /home/bitcoin
 if [ ! -d "/home/bitcoin/flotilla" ]; then
@@ -274,6 +287,7 @@ echo "WantedBy=multi-user.target" >> /etc/systemd/system/flotilla.service
 
 systemctl enable flotilla.service
 
+echo "🔌 Step 16: Installing Bitcoin Node API server..."
 # ----------- Install Bitcoin Node API server (Express.js) ------------------------
 mkdir -p /home/bitcoin/server
 cp -r /boot/server/* /home/bitcoin/server/
@@ -288,11 +302,13 @@ systemctl enable btcnode-api.service
 # Ensure correct ownership
 chown -R bitcoin:bitcoin /home/bitcoin/server
 
+echo "🧹 Step 17: Final cleanup..."
 # ------------------------------------------------------------------------------------
 
 # Cleanup
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+echo "✅ Chroot customization complete!"
 CHROOT_EOF
 
 # Step 9: Cleanup mounts and detach loop
