@@ -18,7 +18,7 @@ echo ""
 read -p "How many MB to prune blockchain to? [default: 2048]: " PRUNE
 PRUNE=${PRUNE:-2048}
 
-cat <<'WIFI_CONFIG' | sudo tee /etc/wpa_supplicant/wpa_supplicant.conf > /dev/null
+cat <<WIFI_CONFIG | sudo tee /etc/wpa_supplicant/wpa_supplicant.conf > /dev/null
 country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
@@ -34,7 +34,7 @@ sudo rfkill unblock wifi
 sudo systemctl restart wpa_supplicant
 sudo dhclient wlan0
 
-cat <<'BITCOIN_CONFIG' | sudo tee /home/bitcoin/.bitcoin/bitcoin.conf > /dev/null
+cat <<BITCOIN_CONFIG | sudo tee /home/bitcoin/.bitcoin/bitcoin.conf > /dev/null
 server=1
 rpcuser=bitcoin
 rpcpassword=changeme

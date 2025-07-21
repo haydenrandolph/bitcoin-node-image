@@ -82,7 +82,10 @@ sudo cp scripts/btcnode-api.service $ROOT/boot/btcnode-api.service
 
 # Step 8: Chroot customization
 echo "🚀 Starting chroot customization..."
-sudo chroot $ROOT /bin/bash << 'CHROOT_EOF'
+
+# Create a temporary script for chroot execution
+cat > /tmp/chroot-script.sh << 'CHROOT_SCRIPT_EOF'
+#!/bin/bash
 set -e
 
 echo "🔧 Step 1: Setting up chroot environment..."
@@ -112,7 +115,7 @@ apt install -y --no-install-recommends xserver-xorg xinit raspberrypi-ui-mods ch
 echo "👤 Step 5: Setting up bitcoin user and desktop..."
 # Autologin for the bitcoin user to desktop
 if ! grep -q "autologin-user=bitcoin" /etc/lightdm/lightdm.conf; then
-  sed -i '/^#*autologin-user=/c\autologin-user=bitcoin' /etc/lightdm/lightdm.conf
+  sed -i "s/^#*autologin-user=.*/autologin-user=bitcoin/" /etc/lightdm/lightdm.conf
 fi
 
 # Set Chromium to autostart in kiosk mode
@@ -270,7 +273,7 @@ sudo -u bitcoin npm install || echo "Warning: Flotilla npm install failed"
 sudo -u bitcoin npm run build || echo "Warning: Flotilla build failed"
 # Update package.json start script if it exists
 if [ -f "package.json" ]; then
-  sed -i '/"start":/c\    "start": "vite preview --host 0.0.0.0",' package.json || true
+  sed -i "s/\"start\":.*/\"start\": \"vite preview --host 0.0.0.0\",/" package.json || true
 fi
 echo "[Unit]" > /etc/systemd/system/flotilla.service
 echo "Description=Flotilla Nostr Web UI" >> /etc/systemd/system/flotilla.service
@@ -309,7 +312,16 @@ echo "🧹 Step 17: Final cleanup..."
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 echo "✅ Chroot customization complete!"
-CHROOT_EOF
+CHROOT_SCRIPT_EOF
+
+# Copy the script to the chroot environment and execute it
+sudo cp /tmp/chroot-script.sh $ROOT/tmp/chroot-script.sh
+sudo chmod +x $ROOT/tmp/chroot-script.sh
+sudo chroot $ROOT /tmp/chroot-script.sh
+
+# Clean up the temporary script
+sudo rm $ROOT/tmp/chroot-script.sh
+rm /tmp/chroot-script.sh
 
 # Step 9: Cleanup mounts and detach loop
 sudo umount $ROOT/{dev,proc,sys,boot}
