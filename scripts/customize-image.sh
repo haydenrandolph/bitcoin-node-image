@@ -94,23 +94,31 @@ echo -e '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d
 chmod +x /usr/sbin/policy-rc.d
 export DEBIAN_FRONTEND=noninteractive
 
+# Configure dpkg to use default options for configuration files
+echo 'Dpkg::Options::="--force-confdef";' > /etc/apt/apt.conf.d/99force-confdef
+echo 'Dpkg::Options::="--force-confold";' >> /etc/apt/apt.conf.d/99force-confdef
+
 echo "📦 Step 2: Updating packages..."
 apt update
 
 # Prevent bloated kernel header upgrades
 apt-mark hold linux-headers-* linux-image-* rpi-eeprom || true
 
-# Graceful upgrade and cleanup
-apt upgrade -y || true
-apt --fix-broken install -y || true
+# Graceful upgrade and cleanup with non-interactive flags
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade -y || true
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --fix-broken install -y || true
+
+# Fix initramfs-tools configuration issue specifically
+echo "🔧 Fixing initramfs-tools configuration..."
+echo "Y" | DEBIAN_FRONTEND=noninteractive dpkg --configure -a || true
 
 echo "📦 Step 3: Installing required packages..."
-# Required packages (except nodejs)
-apt install -y --no-install-recommends curl wget git ufw fail2ban tor iptables python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo ca-certificates
+# Required packages (except nodejs) with non-interactive flags
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends curl wget git ufw fail2ban tor iptables python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo ca-certificates
 
 echo "🖥️ Step 4: Installing desktop environment..."
 # ----------- Add desktop & browser for local HDMI experience -----------
-apt install -y --no-install-recommends xserver-xorg xinit raspberrypi-ui-mods chromium-browser unclutter
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends xserver-xorg xinit raspberrypi-ui-mods chromium-browser unclutter
 
 echo "👤 Step 5: Setting up bitcoin user and desktop..."
 # Autologin for the bitcoin user to desktop
@@ -138,7 +146,7 @@ chown -R bitcoin:bitcoin /home/bitcoin/.config
 echo "🟢 Step 6: Installing Node.js..."
 # ----------- Install Node.js 20 LTS (for flotilla and backend) -----------
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt-get install -y nodejs
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y nodejs
 npm install -g npm@latest
 
 echo "🐳 Step 7: Installing Docker..."
@@ -146,7 +154,7 @@ echo "🐳 Step 7: Installing Docker..."
 curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
 usermod -aG docker bitcoin
-apt-get install -y docker-compose-plugin
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y docker-compose-plugin
 
 echo "💰 Step 8: Setting up BTCPay Server..."
 # ----------- Clone BTCPayServer repo (docker, ARM-ready) ----------------------
