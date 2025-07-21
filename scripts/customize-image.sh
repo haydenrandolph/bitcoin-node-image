@@ -49,6 +49,11 @@ sudo cp scripts/btcnode-api.service $ROOT/boot/btcnode-api.service
 sudo chroot $ROOT /bin/bash <<'EOF'
 set -e
 
+# Prevent services from starting in chrooted apt operations
+echo -e '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d
+chmod +x /usr/sbin/policy-rc.d
+export DEBIAN_FRONTEND=noninteractive
+
 echo "📦 Updating packages (no kernel bloat)..."
 apt update
 
