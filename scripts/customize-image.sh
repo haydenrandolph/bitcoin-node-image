@@ -5,6 +5,9 @@ IMAGE=$1
 BOOTSTRAP_RPC=$2
 
 # Validate parameters
+echo "🔍 Debug: IMAGE=$IMAGE"
+echo "🔍 Debug: BOOTSTRAP_RPC=$BOOTSTRAP_RPC"
+
 if [ -z "$IMAGE" ] || [ -z "$BOOTSTRAP_RPC" ]; then
     echo "Usage: $0 <image_file> <bootstrap_rpc_script>"
     echo "Example: $0 raspi-custom.img scripts/bootstrap-rpc-creds.sh"
@@ -57,15 +60,28 @@ echo "📁 Copying scripts to image..."
 sudo cp scripts/firstboot-setup.sh $ROOT/boot/firstboot-setup.sh
 sudo cp scripts/firstboot-setup.service $ROOT/boot/firstboot-setup.service
 echo "📋 Copying bootstrap script: $BOOTSTRAP_RPC"
+echo "🔍 Debug: Source file exists: $(ls -la "$BOOTSTRAP_RPC" 2>/dev/null || echo 'NOT FOUND')"
 sudo cp "$BOOTSTRAP_RPC" $ROOT/boot/bootstrap-rpc-creds.sh || echo "Warning: Failed to copy bootstrap script"
+echo "🔍 Debug: Target file exists: $(ls -la $ROOT/boot/bootstrap-rpc-creds.sh 2>/dev/null || echo 'NOT FOUND')"
 sudo chmod +x $ROOT/boot/bootstrap-rpc-creds.sh
+
+# Verify the file was copied correctly
+echo "🔍 Debug: Verifying bootstrap script copy..."
+if [ -f "$ROOT/boot/bootstrap-rpc-creds.sh" ]; then
+    echo "✅ Bootstrap script copied successfully"
+    echo "🔍 Debug: File permissions: $(ls -la $ROOT/boot/bootstrap-rpc-creds.sh)"
+    echo "🔍 Debug: File content preview: $(head -1 $ROOT/boot/bootstrap-rpc-creds.sh)"
+else
+    echo "❌ Failed to copy bootstrap script"
+    exit 1
+fi
 
 # Copy backend and systemd unit
 sudo cp -r server $ROOT/boot/server
 sudo cp scripts/btcnode-api.service $ROOT/boot/btcnode-api.service
 
 # Step 8: Chroot customization
-sudo chroot $ROOT /bin/bash <<'CHROOT_EOF'
+sudo chroot $ROOT /bin/bash << 'CHROOT_EOF'
 set -e
 
 # Prevent services from starting in chrooted apt operations
@@ -133,16 +149,14 @@ fi
 chown -R bitcoin:bitcoin /home/bitcoin/btcpayserver
 
 # ----------- BTCPay easy startup script ---------------------------------------
-cat <<'BTSH' >/home/bitcoin/btcpayserver/start-btcpay.sh
-#!/bin/bash
-cd /home/bitcoin/btcpayserver/btcpayserver-docker
-export BTCPAY_HOST="pi.local"
-export NBITCOIN_NETWORK="mainnet"
-export BTCPAYGEN_CRYPTO1="btc"
-export BTCPAYGEN_REVERSEPROXY="nginx"
-export BTCPAYGEN_LIGHTNING="none"
-. ./btcpay-setup.sh -i
-BTSH
+echo "#!/bin/bash" > /home/bitcoin/btcpayserver/start-btcpay.sh
+echo "cd /home/bitcoin/btcpayserver/btcpayserver-docker" >> /home/bitcoin/btcpayserver/start-btcpay.sh
+echo 'export BTCPAY_HOST="pi.local"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
+echo 'export NBITCOIN_NETWORK="mainnet"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
+echo 'export BTCPAYGEN_CRYPTO1="btc"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
+echo 'export BTCPAYGEN_REVERSEPROXY="nginx"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
+echo 'export BTCPAYGEN_LIGHTNING="none"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
+echo ". ./btcpay-setup.sh -i" >> /home/bitcoin/btcpayserver/start-btcpay.sh
 chmod +x /home/bitcoin/btcpayserver/start-btcpay.sh
 chown bitcoin:bitcoin /home/bitcoin/btcpayserver/start-btcpay.sh
 # -------------------------------------------------------------------------------
@@ -156,56 +170,77 @@ install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin
 rm -rf bitcoin-${BITCOIN_VERSION}*
 
 # Placeholder bitcoin.conf (patched at boot)
-cat <<'BITCOIN_CONF' >/home/bitcoin/.bitcoin/bitcoin.conf
-server=1
-daemon=1
-txindex=1
-rpcuser=REPLACE_USER
-rpcpassword=REPLACE_PASS
-rpcallowip=127.0.0.1
-BITCOIN_CONF
+echo "server=1" > /home/bitcoin/.bitcoin/bitcoin.conf
+echo "daemon=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "txindex=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "rpcuser=REPLACE_USER" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "rpcpassword=REPLACE_PASS" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "rpcallowip=127.0.0.1" >> /home/bitcoin/.bitcoin/bitcoin.conf
 
 chown bitcoin:bitcoin /home/bitcoin/.bitcoin/bitcoin.conf
 chmod 600 /home/bitcoin/.bitcoin/bitcoin.conf
 
 # bitcoind systemd service
-cat <<'BITCOIND_SERVICE' >/etc/systemd/system/bitcoind.service
-[Unit]
-Description=Bitcoin daemon
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/bitcoind -conf=/home/bitcoin/.bitcoin/bitcoin.conf -datadir=/home/bitcoin/.bitcoin
-User=bitcoin
-Group=bitcoin
-Type=simple
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-BITCOIND_SERVICE
+echo "[Unit]" > /etc/systemd/system/bitcoind.service
+echo "Description=Bitcoin daemon" >> /etc/systemd/system/bitcoind.service
+echo "After=network.target" >> /etc/systemd/system/bitcoind.service
+echo "" >> /etc/systemd/system/bitcoind.service
+echo "[Service]" >> /etc/systemd/system/bitcoind.service
+echo "ExecStart=/usr/local/bin/bitcoind -conf=/home/bitcoin/.bitcoin/bitcoin.conf -datadir=/home/bitcoin/.bitcoin" >> /etc/systemd/system/bitcoind.service
+echo "User=bitcoin" >> /etc/systemd/system/bitcoind.service
+echo "Group=bitcoin" >> /etc/systemd/system/bitcoind.service
+echo "Type=simple" >> /etc/systemd/system/bitcoind.service
+echo "Restart=always" >> /etc/systemd/system/bitcoind.service
+echo "RestartSec=10" >> /etc/systemd/system/bitcoind.service
+echo "" >> /etc/systemd/system/bitcoind.service
+echo "[Install]" >> /etc/systemd/system/bitcoind.service
+echo "WantedBy=multi-user.target" >> /etc/systemd/system/bitcoind.service
 
 systemctl enable bitcoind.service
 
 # Bootstrap RPC credentials service
+echo "🔍 Debug: Installing bootstrap script..."
+ls -la /boot/bootstrap-rpc-creds.sh || echo "❌ Bootstrap script not found in /boot"
+echo "🔍 Debug: File name check: $(basename /boot/bootstrap-rpc-creds.sh)"
+echo "🔍 Debug: File name length: $(basename /boot/bootstrap-rpc-creds.sh | wc -c)"
 install -m 0755 /boot/bootstrap-rpc-creds.sh /usr/local/bin/bootstrap-rpc-creds.sh
+echo "🔍 Debug: Bootstrap script installed to /usr/local/bin/"
+ls -la /usr/local/bin/bootstrap-rpc-creds.sh || echo "❌ Failed to install bootstrap script"
+echo "🔍 Debug: Installed file name: $(basename /usr/local/bin/bootstrap-rpc-creds.sh)"
 
-cat <<'BOOTSTRAP_RPC_SERVICE' >/etc/systemd/system/bootstrap-rpc-creds.service
-[Unit]
-Description=Bootstrap RPC Credentials for Bitcoin
-After=network.target
-Before=bitcoind.service
+# Test the script execution
+echo "🔍 Debug: Testing bootstrap script execution..."
+echo "🔍 Debug: Script shebang: $(head -1 /usr/local/bin/bootstrap-rpc-creds.sh)"
+echo "🔍 Debug: Script permissions: $(ls -la /usr/local/bin/bootstrap-rpc-creds.sh)"
+/usr/local/bin/bootstrap-rpc-creds.sh || echo "❌ Bootstrap script execution failed"
 
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/bootstrap-rpc-creds.sh
+# Create bootstrap service file using echo to avoid heredoc issues
+echo "[Unit]" > /etc/systemd/system/bootstrap-rpc-creds.service
+echo "Description=Bootstrap RPC Credentials for Bitcoin" >> /etc/systemd/system/bootstrap-rpc-creds.service
+echo "After=network.target" >> /etc/systemd/system/bootstrap-rpc-creds.service
+echo "Before=bitcoind.service" >> /etc/systemd/system/bootstrap-rpc-creds.service
+echo "" >> /etc/systemd/system/bootstrap-rpc-creds.service
+echo "[Service]" >> /etc/systemd/system/bootstrap-rpc-creds.service
+echo "Type=oneshot" >> /etc/systemd/system/bootstrap-rpc-creds.service
+echo "ExecStart=/usr/local/bin/bootstrap-rpc-creds.sh" >> /etc/systemd/system/bootstrap-rpc-creds.service
+echo "" >> /etc/systemd/system/bootstrap-rpc-creds.service
+echo "[Install]" >> /etc/systemd/system/bootstrap-rpc-creds.service
+echo "WantedBy=multi-user.target" >> /etc/systemd/system/bootstrap-rpc-creds.service
 
-[Install]
-WantedBy=multi-user.target
-BOOTSTRAP_RPC_SERVICE
+# Verify the service file was created correctly
+echo "🔍 Debug: Service file contents:"
+cat /etc/systemd/system/bootstrap-rpc-creds.service
 
-systemctl enable bootstrap-rpc-creds.service
+# Verify the script exists and is executable
+echo "🔍 Debug: Verifying script exists and is executable..."
+if [ -x "/usr/local/bin/bootstrap-rpc-creds.sh" ]; then
+    echo "✅ Bootstrap script is executable"
+    systemctl enable bootstrap-rpc-creds.service
+else
+    echo "❌ Bootstrap script is not executable or doesn't exist"
+    echo "🔍 Debug: Script status: $(ls -la /usr/local/bin/bootstrap-rpc-creds.sh 2>/dev/null || echo 'NOT FOUND')"
+    exit 1
+fi
 
 # ----------- Install firstboot wizard and enable systemd oneshot ---------------
 install -m 0755 /boot/firstboot-setup.sh /usr/local/bin/firstboot-setup.sh
@@ -224,20 +259,18 @@ sudo -u bitcoin npm run build || echo "Warning: Flotilla build failed"
 if [ -f "package.json" ]; then
   sed -i '/"start":/c\    "start": "vite preview --host 0.0.0.0",' package.json || true
 fi
-cat <<'FLOTILLA_SERVICE' >/etc/systemd/system/flotilla.service
-[Unit]
-Description=Flotilla Nostr Web UI
-After=network.target btcnode-api.service
-
-[Service]
-WorkingDirectory=/home/bitcoin/flotilla
-ExecStart=/usr/bin/npm run start
-User=bitcoin
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-FLOTILLA_SERVICE
+echo "[Unit]" > /etc/systemd/system/flotilla.service
+echo "Description=Flotilla Nostr Web UI" >> /etc/systemd/system/flotilla.service
+echo "After=network.target btcnode-api.service" >> /etc/systemd/system/flotilla.service
+echo "" >> /etc/systemd/system/flotilla.service
+echo "[Service]" >> /etc/systemd/system/flotilla.service
+echo "WorkingDirectory=/home/bitcoin/flotilla" >> /etc/systemd/system/flotilla.service
+echo "ExecStart=/usr/bin/npm run start" >> /etc/systemd/system/flotilla.service
+echo "User=bitcoin" >> /etc/systemd/system/flotilla.service
+echo "Restart=always" >> /etc/systemd/system/flotilla.service
+echo "" >> /etc/systemd/system/flotilla.service
+echo "[Install]" >> /etc/systemd/system/flotilla.service
+echo "WantedBy=multi-user.target" >> /etc/systemd/system/flotilla.service
 
 systemctl enable flotilla.service
 
