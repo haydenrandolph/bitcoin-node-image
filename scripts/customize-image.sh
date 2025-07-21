@@ -137,14 +137,14 @@ install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin
 rm -rf bitcoin-${BITCOIN_VERSION}*
 
 # Placeholder bitcoin.conf (patched at boot)
-cat <<CONF >/home/bitcoin/.bitcoin/bitcoin.conf
+cat <<'BITCOIN_CONF' >/home/bitcoin/.bitcoin/bitcoin.conf
 server=1
 daemon=1
 txindex=1
 rpcuser=REPLACE_USER
 rpcpassword=REPLACE_PASS
 rpcallowip=127.0.0.1
-CONF
+BITCOIN_CONF
 
 chown bitcoin:bitcoin /home/bitcoin/.bitcoin/bitcoin.conf
 chmod 600 /home/bitcoin/.bitcoin/bitcoin.conf
