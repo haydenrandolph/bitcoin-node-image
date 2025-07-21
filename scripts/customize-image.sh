@@ -4,6 +4,23 @@ set -e
 IMAGE=$1
 BOOTSTRAP_RPC=$2
 
+# Validate parameters
+if [ -z "$IMAGE" ] || [ -z "$BOOTSTRAP_RPC" ]; then
+    echo "Usage: $0 <image_file> <bootstrap_rpc_script>"
+    echo "Example: $0 raspi-custom.img scripts/bootstrap-rpc-creds.sh"
+    exit 1
+fi
+
+if [ ! -f "$IMAGE" ]; then
+    echo "Error: Image file '$IMAGE' not found"
+    exit 1
+fi
+
+if [ ! -f "$BOOTSTRAP_RPC" ]; then
+    echo "Error: Bootstrap RPC script '$BOOTSTRAP_RPC' not found"
+    exit 1
+fi
+
 # Step 1: Expand the image file (+3GB to be safe)
 echo "🧩 Expanding image size by +3GB..."
 truncate -s +3G "$IMAGE"
@@ -36,9 +53,11 @@ sudo mount --bind /proc $ROOT/proc
 sudo mount --bind /sys $ROOT/sys
 
 # ----------- Copy scripts/server files for later chroot install -------------
+echo "📁 Copying scripts to image..."
 sudo cp scripts/firstboot-setup.sh $ROOT/boot/firstboot-setup.sh
 sudo cp scripts/firstboot-setup.service $ROOT/boot/firstboot-setup.service
-sudo cp "$BOOTSTRAP_RPC" $ROOT/boot/bootstrap-rpc-creds.sh
+echo "📋 Copying bootstrap script: $BOOTSTRAP_RPC"
+sudo cp "$BOOTSTRAP_RPC" $ROOT/boot/bootstrap-rpc-creds.sh || echo "Warning: Failed to copy bootstrap script"
 sudo chmod +x $ROOT/boot/bootstrap-rpc-creds.sh
 
 # Copy backend and systemd unit
