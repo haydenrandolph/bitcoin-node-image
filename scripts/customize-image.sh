@@ -150,7 +150,7 @@ chown bitcoin:bitcoin /home/bitcoin/.bitcoin/bitcoin.conf
 chmod 600 /home/bitcoin/.bitcoin/bitcoin.conf
 
 # bitcoind systemd service
-cat <<SERVICE >/etc/systemd/system/bitcoind.service
+cat <<'BITCOIND_SERVICE' >/etc/systemd/system/bitcoind.service
 [Unit]
 Description=Bitcoin daemon
 After=network.target
@@ -165,14 +165,14 @@ RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-SERVICE
+BITCOIND_SERVICE
 
 systemctl enable bitcoind.service
 
 # Bootstrap RPC credentials service
 install -m 0755 /boot/bootstrap-rpc-creds.sh /usr/local/bin/bootstrap-rpc-creds.sh
 
-cat <<RPC >/etc/systemd/system/bootstrap-rpc-creds.service
+cat <<'BOOTSTRAP_RPC_SERVICE' >/etc/systemd/system/bootstrap-rpc-creds.service
 [Unit]
 Description=Bootstrap RPC Credentials for Bitcoin
 After=network.target
@@ -184,7 +184,7 @@ ExecStart=/usr/local/bin/bootstrap-rpc-creds.sh
 
 [Install]
 WantedBy=multi-user.target
-RPC
+BOOTSTRAP_RPC_SERVICE
 
 systemctl enable bootstrap-rpc-creds.service
 
@@ -202,7 +202,7 @@ cd /home/bitcoin/flotilla
 sudo -u bitcoin npm install
 sudo -u bitcoin npm run build
 sed -i '/"start":/c\    "start": "vite preview --host 0.0.0.0",' package.json
-cat <<FLOTILLA_SERVICE >/etc/systemd/system/flotilla.service
+cat <<'FLOTILLA_SERVICE' >/etc/systemd/system/flotilla.service
 [Unit]
 Description=Flotilla Nostr Web UI
 After=network.target
