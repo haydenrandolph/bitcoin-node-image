@@ -46,7 +46,7 @@ sudo cp -r server $ROOT/boot/server
 sudo cp scripts/btcnode-api.service $ROOT/boot/btcnode-api.service
 
 # Step 8: Chroot customization
-sudo chroot $ROOT /bin/bash <<'EOF'
+sudo chroot $ROOT /bin/bash <<'CHROOT_EOF'
 set -e
 
 # Prevent services from starting in chrooted apt operations
@@ -131,9 +131,9 @@ chown bitcoin:bitcoin /home/bitcoin/btcpayserver/start-btcpay.sh
 echo "🪙 Installing Bitcoin Core..."
 BITCOIN_VERSION=25.1
 cd /tmp
-wget https://bitcoincore.org/bin/bitcoin-core-${BITCOIN_VERSION}/bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz
-tar -xvf bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz
-install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin/*
+wget https://bitcoincore.org/bin/bitcoin-core-${BITCOIN_VERSION}/bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz || echo "Warning: Bitcoin download failed"
+tar -xvf bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz || echo "Warning: Bitcoin extraction failed"
+install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin/* || echo "Warning: Bitcoin install failed"
 rm -rf bitcoin-${BITCOIN_VERSION}*
 
 # Placeholder bitcoin.conf (patched at boot)
@@ -196,16 +196,19 @@ systemctl enable firstboot-setup.service
 # ----------- Install Flotilla Nostr Web UI and enable systemd service -----------
 cd /home/bitcoin
 if [ ! -d "/home/bitcoin/flotilla" ]; then
-  sudo -u bitcoin git clone https://github.com/coracle-social/flotilla.git
+  sudo -u bitcoin git clone https://github.com/coracle-social/flotilla.git || echo "Warning: Flotilla clone failed"
 fi
 cd /home/bitcoin/flotilla
-sudo -u bitcoin npm install
-sudo -u bitcoin npm run build
-sed -i '/"start":/c\    "start": "vite preview --host 0.0.0.0",' package.json
+sudo -u bitcoin npm install || echo "Warning: Flotilla npm install failed"
+sudo -u bitcoin npm run build || echo "Warning: Flotilla build failed"
+# Update package.json start script if it exists
+if [ -f "package.json" ]; then
+  sed -i '/"start":/c\    "start": "vite preview --host 0.0.0.0",' package.json || true
+fi
 cat <<'FLOTILLA_SERVICE' >/etc/systemd/system/flotilla.service
 [Unit]
 Description=Flotilla Nostr Web UI
-After=network.target
+After=network.target btcnode-api.service
 
 [Service]
 WorkingDirectory=/home/bitcoin/flotilla
@@ -238,7 +241,7 @@ chown -R bitcoin:bitcoin /home/bitcoin/server
 # Cleanup
 apt-get clean
 rm -rf /var/lib/apt/lists/*
-EOF
+CHROOT_EOF
 
 # Step 9: Cleanup mounts and detach loop
 sudo umount $ROOT/{dev,proc,sys,boot}
