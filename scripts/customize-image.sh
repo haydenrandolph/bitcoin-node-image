@@ -116,9 +116,17 @@ echo "📦 Step 3: Installing required packages..."
 # Required packages (except nodejs) with non-interactive flags
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends curl wget git ufw fail2ban tor iptables python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo ca-certificates
 
+# Clean up after package installation to free memory
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
 echo "🖥️ Step 4: Installing desktop environment..."
 # ----------- Add desktop & browser for local HDMI experience -----------
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends xserver-xorg xinit raspberrypi-ui-mods chromium-browser unclutter
+
+# Clean up after desktop installation
+apt-get clean
+rm -rf /var/lib/apt/lists/*
 
 echo "👤 Step 5: Setting up bitcoin user and desktop..."
 # Autologin for the bitcoin user to desktop
@@ -149,21 +157,50 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y nodejs
 npm install -g npm@latest
 
+# Clean up after Node.js installation
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
 echo "🐳 Step 7: Installing Docker..."
 # ----------- Install Docker and Docker Compose for BTCPay ----------------------
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh
-usermod -aG docker bitcoin
-DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y docker-compose-plugin
+# Clear apt cache to free memory
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+# Install Docker using package manager instead of get-docker.sh script
+echo "📦 Installing Docker from Debian repositories..."
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y docker.io docker-compose-plugin || echo "Warning: Docker installation failed, will try alternative method"
+
+# If Docker installation failed, try alternative method
+if ! command -v docker &> /dev/null; then
+    echo "🔄 Trying alternative Docker installation method..."
+    # Install Docker using snap (more reliable in chroot)
+    apt-get install -y snapd
+    snap install docker --classic || echo "Warning: Snap Docker installation failed"
+fi
+
+# Add bitcoin user to docker group if docker is available
+if command -v docker &> /dev/null; then
+    usermod -aG docker bitcoin
+    echo "✅ Docker installed successfully"
+else
+    echo "⚠️ Docker installation failed, BTCPay may not work properly"
+fi
 
 echo "💰 Step 8: Setting up BTCPay Server..."
 # ----------- Clone BTCPayServer repo (docker, ARM-ready) ----------------------
 sudo -u bitcoin mkdir -p /home/bitcoin/btcpayserver
 cd /home/bitcoin/btcpayserver
 if [ ! -d "/home/bitcoin/btcpayserver/btcpayserver-docker" ]; then
-  sudo -u bitcoin git clone https://github.com/btcpayserver/btcpayserver-docker.git
+  sudo -u bitcoin git clone https://github.com/btcpayserver/btcpayserver-docker.git || echo "Warning: BTCPay clone failed"
 fi
 chown -R bitcoin:bitcoin /home/bitcoin/btcpayserver
+
+# Check if Docker is available for BTCPay
+if ! command -v docker &> /dev/null; then
+    echo "⚠️ Docker not available, BTCPay will need manual setup"
+    echo "📝 Note: You can install Docker manually after first boot"
+fi
 
 echo "📜 Step 9: Creating BTCPay startup script..."
 # ----------- BTCPay easy startup script ---------------------------------------
@@ -276,9 +313,15 @@ cd /home/bitcoin
 if [ ! -d "/home/bitcoin/flotilla" ]; then
   sudo -u bitcoin git clone https://github.com/coracle-social/flotilla.git || echo "Warning: Flotilla clone failed"
 fi
-cd /home/bitcoin/flotilla
-sudo -u bitcoin npm install || echo "Warning: Flotilla npm install failed"
-sudo -u bitcoin npm run build || echo "Warning: Flotilla build failed"
+
+# Only proceed with npm install if the directory exists
+if [ -d "/home/bitcoin/flotilla" ]; then
+  cd /home/bitcoin/flotilla
+  sudo -u bitcoin npm install || echo "Warning: Flotilla npm install failed"
+  sudo -u bitcoin npm run build || echo "Warning: Flotilla build failed"
+else
+  echo "⚠️ Flotilla directory not found, skipping npm install"
+fi
 # Update package.json start script if it exists
 if [ -f "package.json" ]; then
   sed -i "s/\"start\":.*/\"start\": \"vite preview --host 0.0.0.0\",/" package.json || true
