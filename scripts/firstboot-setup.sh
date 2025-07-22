@@ -8,6 +8,9 @@ fi
 echo "==== Welcome to Your Pi Bitcoin Node ===="
 echo "Let's get you set up for Wi-Fi and blockchain pruning!"
 echo ""
+echo "💡 After setup, access the web interface at: http://pi.local:3000"
+echo "   Or use SSH port forwarding: ssh -L 3000:localhost:3000 pi@pi.local"
+echo ""
 
 # --- Wi-Fi setup ---
 read -p "WiFi SSID: " SSID

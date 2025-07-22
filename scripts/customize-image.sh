@@ -122,22 +122,31 @@ rm -rf /var/lib/apt/lists/*
 
 echo "🖥️ Step 4: Installing desktop environment..."
 # ----------- Add desktop & browser for local HDMI experience -----------
-DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends xserver-xorg xinit raspberrypi-ui-mods chromium-browser unclutter
+# Try to install desktop packages, but don't fail if they're not available
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends xserver-xorg xinit raspberrypi-sys-mods chromium-browser unclutter || echo "Warning: Some desktop packages not available, continuing without desktop"
 
 # Clean up after desktop installation
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
 echo "👤 Step 5: Setting up bitcoin user and desktop..."
-# Autologin for the bitcoin user to desktop
-if ! grep -q "autologin-user=bitcoin" /etc/lightdm/lightdm.conf; then
-  sed -i "s/^#*autologin-user=.*/autologin-user=bitcoin/" /etc/lightdm/lightdm.conf
+# Autologin for the bitcoin user to desktop (only if lightdm is available)
+if [ -f "/etc/lightdm/lightdm.conf" ]; then
+  if ! grep -q "autologin-user=bitcoin" /etc/lightdm/lightdm.conf; then
+    sed -i "s/^#*autologin-user=.*/autologin-user=bitcoin/" /etc/lightdm/lightdm.conf
+  fi
 fi
 
-# Set Chromium to autostart in kiosk mode
-mkdir -p /home/bitcoin/.config/lxsession/LXDE-pi/
-echo '@chromium-browser --kiosk --incognito --noerrdialogs --disable-infobars http://localhost:3000' >> /home/bitcoin/.config/lxsession/LXDE-pi/autostart
-echo '@unclutter -idle 1' >> /home/bitcoin/.config/lxsession/LXDE-pi/autostart
+# Set Chromium to autostart in kiosk mode (only if desktop is available)
+if command -v chromium-browser &> /dev/null; then
+  mkdir -p /home/bitcoin/.config/lxsession/LXDE-pi/
+  echo '@chromium-browser --kiosk --incognito --noerrdialogs --disable-infobars http://localhost:3000' >> /home/bitcoin/.config/lxsession/LXDE-pi/autostart
+  echo '@unclutter -idle 1' >> /home/bitcoin/.config/lxsession/LXDE-pi/autostart
+  echo "✅ Desktop autostart configured"
+else
+  echo "⚠️ Chromium not available, skipping desktop autostart"
+  echo "📝 Note: Access the web interface at http://pi.local:3000 or via SSH port forwarding"
+fi
 
 # ----------- Add bitcoin user if not exists ---------
 if ! id bitcoin &>/dev/null; then
@@ -362,6 +371,14 @@ echo "🧹 Step 17: Final cleanup..."
 # Cleanup
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+
+# Add helpful access information
+echo "🌐 Web Interface Access Information:"
+echo "   - Local access: http://pi.local:3000"
+echo "   - SSH port forward: ssh -L 3000:localhost:3000 pi@pi.local"
+echo "   - Default credentials: pi/raspberry"
+echo "   - Bitcoin user: bitcoin (no password)"
+
 echo "✅ Chroot customization complete!"
 CHROOT_SCRIPT_EOF
 
