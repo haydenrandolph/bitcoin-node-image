@@ -40,4 +40,15 @@ document.getElementById('wifi-form').onsubmit = async (e) => {
       <b>Sync Progress:</b> ${(data.verificationprogress*100).toFixed(2)}%<br>
     `;
   }
-  window.onload = () => { getBitcoinStatus(); getNostrIdentity(); };  
+
+  async function getSystemInfo() {
+    const res = await fetch('/api/system/info'); const data = await res.json();
+    document.getElementById('system-info').innerHTML = `
+      <b>Hostname:</b> ${data.hostname}<br>
+      <b>Uptime:</b> ${Math.floor(data.uptime / 3600)} hours<br>
+      <b>Memory:</b> ${Math.round(data.mem / 1024 / 1024)} MB free / ${Math.round(data.totalmem / 1024 / 1024)} MB total<br>
+      <b>Load Average:</b> ${data.load[0].toFixed(2)}, ${data.load[1].toFixed(2)}, ${data.load[2].toFixed(2)}<br>
+    `;
+  }
+
+  window.onload = () => { getBitcoinStatus(); getNostrIdentity(); getSystemInfo(); };  

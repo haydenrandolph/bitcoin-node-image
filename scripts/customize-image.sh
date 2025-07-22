@@ -113,41 +113,17 @@ echo "🔧 Fixing initramfs-tools configuration..."
 echo "Y" | DEBIAN_FRONTEND=noninteractive dpkg --configure -a || true
 
 echo "📦 Step 3: Installing required packages..."
-# Required packages (except nodejs) with non-interactive flags
-DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends curl wget git ufw fail2ban tor iptables python3-pip python3-setuptools python3-wheel htop libevent-2.1-7 liberror-perl git-man sudo ca-certificates
+# Essential packages for Bitcoin node and enhanced features
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends \
+    curl wget git ufw fail2ban htop sudo ca-certificates \
+    python3-pip python3-setuptools python3-wheel \
+    libevent-2.1-7 liberror-perl git-man
 
 # Clean up after package installation to free memory
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
-echo "🖥️ Step 4: Installing desktop environment..."
-# ----------- Add desktop & browser for local HDMI experience -----------
-# Try to install desktop packages, but don't fail if they're not available
-DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends xserver-xorg xinit raspberrypi-sys-mods chromium-browser unclutter || echo "Warning: Some desktop packages not available, continuing without desktop"
-
-# Clean up after desktop installation
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-
-echo "👤 Step 5: Setting up bitcoin user and desktop..."
-# Autologin for the bitcoin user to desktop (only if lightdm is available)
-if [ -f "/etc/lightdm/lightdm.conf" ]; then
-  if ! grep -q "autologin-user=bitcoin" /etc/lightdm/lightdm.conf; then
-    sed -i "s/^#*autologin-user=.*/autologin-user=bitcoin/" /etc/lightdm/lightdm.conf
-  fi
-fi
-
-# Set Chromium to autostart in kiosk mode (only if desktop is available)
-if command -v chromium-browser &> /dev/null; then
-  mkdir -p /home/bitcoin/.config/lxsession/LXDE-pi/
-  echo '@chromium-browser --kiosk --incognito --noerrdialogs --disable-infobars http://localhost:3000' >> /home/bitcoin/.config/lxsession/LXDE-pi/autostart
-  echo '@unclutter -idle 1' >> /home/bitcoin/.config/lxsession/LXDE-pi/autostart
-  echo "✅ Desktop autostart configured"
-else
-  echo "⚠️ Chromium not available, skipping desktop autostart"
-  echo "📝 Note: Access the web interface at http://pi.local:3000 or via SSH port forwarding"
-fi
-
+echo "👤 Step 4: Setting up bitcoin user..."
 # ----------- Add bitcoin user if not exists ---------
 if ! id bitcoin &>/dev/null; then
   adduser --disabled-password --gecos "" bitcoin
@@ -160,8 +136,8 @@ chown -R bitcoin:bitcoin /home/bitcoin/.bitcoin
 mkdir -p /home/bitcoin/.config
 chown -R bitcoin:bitcoin /home/bitcoin/.config
 
-echo "🟢 Step 6: Installing Node.js..."
-# ----------- Install Node.js 20 LTS (for flotilla and backend) -----------
+echo "🟢 Step 5: Installing Node.js..."
+# ----------- Install Node.js 20 LTS (for API server and Flotilla) -----------
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y nodejs
 npm install -g npm@latest
@@ -170,22 +146,24 @@ npm install -g npm@latest
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
-echo "🐳 Step 7: Installing Docker..."
-# ----------- Install Docker and Docker Compose for BTCPay ----------------------
+echo "🐳 Step 6: Installing Docker..."
+# ----------- Install Docker using official method ----------------------
 # Clear apt cache to free memory
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
-# Install Docker using package manager instead of get-docker.sh script
-echo "📦 Installing Docker from Debian repositories..."
-DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y docker.io docker-compose-plugin || echo "Warning: Docker installation failed, will try alternative method"
+# Install Docker using the official installation script
+echo "📦 Installing Docker using official script..."
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh --dry-run || sh get-docker.sh || echo "Warning: Docker installation failed"
 
-# If Docker installation failed, try alternative method
+# Alternative: Try installing from Debian backports if available
 if ! command -v docker &> /dev/null; then
     echo "🔄 Trying alternative Docker installation method..."
-    # Install Docker using snap (more reliable in chroot)
-    apt-get install -y snapd
-    snap install docker --classic || echo "Warning: Snap Docker installation failed"
+    # Add backports repository
+    echo "deb http://deb.debian.org/debian bullseye-backports main" >> /etc/apt/sources.list
+    apt update
+    DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y docker.io docker-compose-plugin || echo "Warning: Docker installation failed"
 fi
 
 # Add bitcoin user to docker group if docker is available
@@ -193,10 +171,11 @@ if command -v docker &> /dev/null; then
     usermod -aG docker bitcoin
     echo "✅ Docker installed successfully"
 else
-    echo "⚠️ Docker installation failed, BTCPay may not work properly"
+    echo "⚠️ Docker installation failed, BTCPay will need manual setup"
+    echo "📝 Note: You can install Docker manually after first boot"
 fi
 
-echo "💰 Step 8: Setting up BTCPay Server..."
+echo "💰 Step 7: Setting up BTCPay Server..."
 # ----------- Clone BTCPayServer repo (docker, ARM-ready) ----------------------
 sudo -u bitcoin mkdir -p /home/bitcoin/btcpayserver
 cd /home/bitcoin/btcpayserver
@@ -211,7 +190,7 @@ if ! command -v docker &> /dev/null; then
     echo "📝 Note: You can install Docker manually after first boot"
 fi
 
-echo "📜 Step 9: Creating BTCPay startup script..."
+echo "📜 Step 8: Creating BTCPay startup script..."
 # ----------- BTCPay easy startup script ---------------------------------------
 echo "#!/bin/bash" > /home/bitcoin/btcpayserver/start-btcpay.sh
 echo "cd /home/bitcoin/btcpayserver/btcpayserver-docker" >> /home/bitcoin/btcpayserver/start-btcpay.sh
@@ -225,7 +204,7 @@ chmod +x /home/bitcoin/btcpayserver/start-btcpay.sh
 chown bitcoin:bitcoin /home/bitcoin/btcpayserver/start-btcpay.sh
 # -------------------------------------------------------------------------------
 
-echo "🪙 Step 10: Installing Bitcoin Core..."
+echo "🪙 Step 9: Installing Bitcoin Core..."
 # ----------- Install Bitcoin Core -----------------------------------------------
 BITCOIN_VERSION=25.1
 cd /tmp
@@ -234,7 +213,7 @@ tar -xvf bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz || echo "Warning: B
 install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin/* || echo "Warning: Bitcoin install failed"
 rm -rf bitcoin-${BITCOIN_VERSION}*
 
-echo "⚙️ Step 11: Setting up Bitcoin configuration..."
+echo "⚙️ Step 10: Setting up Bitcoin configuration..."
 # Placeholder bitcoin.conf (patched at boot)
 echo "server=1" > /home/bitcoin/.bitcoin/bitcoin.conf
 echo "daemon=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
@@ -246,7 +225,7 @@ echo "rpcallowip=127.0.0.1" >> /home/bitcoin/.bitcoin/bitcoin.conf
 chown bitcoin:bitcoin /home/bitcoin/.bitcoin/bitcoin.conf
 chmod 600 /home/bitcoin/.bitcoin/bitcoin.conf
 
-echo "🔧 Step 12: Creating systemd services..."
+echo "🔧 Step 11: Creating systemd services..."
 # bitcoind systemd service
 echo "[Unit]" > /etc/systemd/system/bitcoind.service
 echo "Description=Bitcoin daemon" >> /etc/systemd/system/bitcoind.service
@@ -265,7 +244,7 @@ echo "WantedBy=multi-user.target" >> /etc/systemd/system/bitcoind.service
 
 systemctl enable bitcoind.service
 
-echo "🔐 Step 13: Setting up bootstrap RPC credentials..."
+echo "🔐 Step 12: Setting up bootstrap RPC credentials..."
 # Bootstrap RPC credentials service
 echo "🔍 Debug: Installing bootstrap script..."
 ls -la /boot/bootstrap-rpc-creds.sh || echo "❌ Bootstrap script not found in /boot"
@@ -310,13 +289,13 @@ else
     exit 1
 fi
 
-echo "🔧 Step 14: Setting up firstboot wizard..."
+echo "🔧 Step 13: Setting up firstboot wizard..."
 # ----------- Install firstboot wizard and enable systemd oneshot ---------------
 install -m 0755 /boot/firstboot-setup.sh /usr/local/bin/firstboot-setup.sh
 cat /boot/firstboot-setup.service > /etc/systemd/system/firstboot-setup.service
 systemctl enable firstboot-setup.service
 
-echo "🌐 Step 15: Installing Flotilla Nostr Web UI..."
+echo "🌐 Step 14: Installing Flotilla Nostr Web UI..."
 # ----------- Install Flotilla Nostr Web UI and enable systemd service -----------
 cd /home/bitcoin
 if [ ! -d "/home/bitcoin/flotilla" ]; then
@@ -331,10 +310,12 @@ if [ -d "/home/bitcoin/flotilla" ]; then
 else
   echo "⚠️ Flotilla directory not found, skipping npm install"
 fi
+
 # Update package.json start script if it exists
 if [ -f "package.json" ]; then
   sed -i "s/\"start\":.*/\"start\": \"vite preview --host 0.0.0.0\",/" package.json || true
 fi
+
 echo "[Unit]" > /etc/systemd/system/flotilla.service
 echo "Description=Flotilla Nostr Web UI" >> /etc/systemd/system/flotilla.service
 echo "After=network.target btcnode-api.service" >> /etc/systemd/system/flotilla.service
@@ -350,7 +331,7 @@ echo "WantedBy=multi-user.target" >> /etc/systemd/system/flotilla.service
 
 systemctl enable flotilla.service
 
-echo "🔌 Step 16: Installing Bitcoin Node API server..."
+echo "🔌 Step 15: Installing Bitcoin Node API server..."
 # ----------- Install Bitcoin Node API server (Express.js) ------------------------
 mkdir -p /home/bitcoin/server
 cp -r /boot/server/* /home/bitcoin/server/
@@ -365,7 +346,7 @@ systemctl enable btcnode-api.service
 # Ensure correct ownership
 chown -R bitcoin:bitcoin /home/bitcoin/server
 
-echo "🧹 Step 17: Final cleanup..."
+echo "🧹 Step 16: Final cleanup..."
 # ------------------------------------------------------------------------------------
 
 # Cleanup
@@ -374,7 +355,9 @@ rm -rf /var/lib/apt/lists/*
 
 # Add helpful access information
 echo "🌐 Web Interface Access Information:"
-echo "   - Local access: http://pi.local:3000"
+echo "   - Bitcoin Node API: http://pi.local:3000"
+echo "   - Flotilla Nostr Client: http://pi.local:5173"
+echo "   - BTCPay Server: http://pi.local (after setup)"
 echo "   - SSH port forward: ssh -L 3000:localhost:3000 pi@pi.local"
 echo "   - Default credentials: pi/raspberry"
 echo "   - Bitcoin user: bitcoin (no password)"
