@@ -1,0 +1,53 @@
+# GCP Service Account Keys
+gcp-service-account-key.json
+*.json.key
+service-account-*.json
+
+# Downloaded images
+*.img
+*.img.xz
+raspberry-pi-bitcoin-node_*.img.xz
+raspberry-pi-bitcoin-node_latest.img.xz
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node.js (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python (if any)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Build artifacts
+build/
+dist/
+*.tar.gz
+*.zip 

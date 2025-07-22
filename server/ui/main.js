@@ -41,6 +41,20 @@ document.getElementById('wifi-form').onsubmit = async (e) => {
     `;
   }
 
+  async function getLightningStatus() {
+    const res = await fetch('/api/lightning/status'); const data = await res.json();
+    document.getElementById('lightning-status').innerHTML = `
+      <b>Status:</b> <span style="color: ${data.status === 'active' ? 'green' : 'red'}">${data.status}</span><br>
+    `;
+  }
+
+  async function getElectrumStatus() {
+    const res = await fetch('/api/electrum/status'); const data = await res.json();
+    document.getElementById('electrum-status').innerHTML = `
+      <b>Status:</b> <span style="color: ${data.status === 'active' ? 'green' : 'red'}">${data.status}</span><br>
+    `;
+  }
+
   async function getSystemInfo() {
     const res = await fetch('/api/system/info'); const data = await res.json();
     document.getElementById('system-info').innerHTML = `
@@ -48,7 +62,14 @@ document.getElementById('wifi-form').onsubmit = async (e) => {
       <b>Uptime:</b> ${Math.floor(data.uptime / 3600)} hours<br>
       <b>Memory:</b> ${Math.round(data.mem / 1024 / 1024)} MB free / ${Math.round(data.totalmem / 1024 / 1024)} MB total<br>
       <b>Load Average:</b> ${data.load[0].toFixed(2)}, ${data.load[1].toFixed(2)}, ${data.load[2].toFixed(2)}<br>
+      <b>Disk Usage:</b> ${data.disk.used} / ${data.disk.total} (${data.disk.usage})<br>
+      <b>Services:</b><br>
+      &nbsp;&nbsp;Bitcoin Core: <span style="color: ${data.services.bitcoind === 'active' ? 'green' : 'red'}">${data.services.bitcoind}</span><br>
+      &nbsp;&nbsp;Lightning (LND): <span style="color: ${data.services.lnd === 'active' ? 'green' : 'red'}">${data.services.lnd}</span><br>
+      &nbsp;&nbsp;Electrum Server: <span style="color: ${data.services.electrumx === 'active' ? 'green' : 'red'}">${data.services.electrumx}</span><br>
+      &nbsp;&nbsp;Web API: <span style="color: ${data.services.btcnode_api === 'active' ? 'green' : 'red'}">${data.services.btcnode_api}</span><br>
+      &nbsp;&nbsp;Flotilla: <span style="color: ${data.services.flotilla === 'active' ? 'green' : 'red'}">${data.services.flotilla}</span><br>
     `;
   }
 
-  window.onload = () => { getBitcoinStatus(); getNostrIdentity(); getSystemInfo(); };  
+  window.onload = () => { getBitcoinStatus(); getNostrIdentity(); getLightningStatus(); getElectrumStatus(); getSystemInfo(); };  

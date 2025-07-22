@@ -214,13 +214,29 @@ install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin
 rm -rf bitcoin-${BITCOIN_VERSION}*
 
 echo "⚙️ Step 10: Setting up Bitcoin configuration..."
-# Placeholder bitcoin.conf (patched at boot)
+# Full node bitcoin.conf optimized for 1TB NVMe SSD
 echo "server=1" > /home/bitcoin/.bitcoin/bitcoin.conf
 echo "daemon=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
 echo "txindex=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
 echo "rpcuser=REPLACE_USER" >> /home/bitcoin/.bitcoin/bitcoin.conf
 echo "rpcpassword=REPLACE_PASS" >> /home/bitcoin/.bitcoin/bitcoin.conf
 echo "rpcallowip=127.0.0.1" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "dbcache=2048" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "maxconnections=40" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "maxuploadtarget=5000" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "blocksonly=0" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "listen=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "discover=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "upnp=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "natpmp=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "externalip=auto" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "rpcbind=127.0.0.1" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "rpcport=8332" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "port=8333" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "debug=rpc" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "debug=net" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "zmqpubrawblock=tcp://127.0.0.1:28332" >> /home/bitcoin/.bitcoin/bitcoin.conf
+echo "zmqpubrawtx=tcp://127.0.0.1:28333" >> /home/bitcoin/.bitcoin/bitcoin.conf
 
 chown bitcoin:bitcoin /home/bitcoin/.bitcoin/bitcoin.conf
 chmod 600 /home/bitcoin/.bitcoin/bitcoin.conf
@@ -244,7 +260,121 @@ echo "WantedBy=multi-user.target" >> /etc/systemd/system/bitcoind.service
 
 systemctl enable bitcoind.service
 
-echo "🔐 Step 12: Setting up bootstrap RPC credentials..."
+echo "⚡ Step 12: Installing Lightning Network (LND)..."
+# ----------- Install Lightning Network (LND) ------------------------------------
+cd /tmp
+LND_VERSION=v0.17.0-beta
+wget https://github.com/lightningnetwork/lnd/releases/download/${LND_VERSION}/lnd-linux-arm64-v${LND_VERSION}.tar.gz || echo "Warning: LND download failed"
+tar -xzf lnd-linux-arm64-v${LND_VERSION}.tar.gz || echo "Warning: LND extraction failed"
+install -m 0755 -o root -g root -t /usr/local/bin lnd-linux-arm64-v${LND_VERSION}/* || echo "Warning: LND install failed"
+rm -rf lnd-linux-arm64-v${LND_VERSION}*
+
+# Create LND directory
+mkdir -p /home/bitcoin/.lnd
+chown -R bitcoin:bitcoin /home/bitcoin/.lnd
+
+# LND configuration
+echo "[Application Options]" > /home/bitcoin/.lnd/lnd.conf
+echo "datadir=/home/bitcoin/.lnd" >> /home/bitcoin/.lnd/lnd.conf
+echo "logdir=/home/bitcoin/.lnd/logs" >> /home/bitcoin/.lnd/lnd.conf
+echo "maxlogfiles=3" >> /home/bitcoin/.lnd/lnd.conf
+echo "maxlogfilesize=10" >> /home/bitcoin/.lnd/lnd.conf
+echo "tlscertpath=/home/bitcoin/.lnd/tls.cert" >> /home/bitcoin/.lnd/lnd.conf
+echo "tlskeypath=/home/bitcoin/.lnd/tls.key" >> /home/bitcoin/.lnd/lnd.conf
+echo "listen=0.0.0.0:9735" >> /home/bitcoin/.lnd/lnd.conf
+echo "rpclisten=127.0.0.1:10009" >> /home/bitcoin/.lnd/lnd.conf
+echo "restlisten=127.0.0.1:8080" >> /home/bitcoin/.lnd/lnd.conf
+echo "externalhosts=auto" >> /home/bitcoin/.lnd/lnd.conf
+echo "alias=BitcoinNode" >> /home/bitcoin/.lnd/lnd.conf
+echo "color=#3399FF" >> /home/bitcoin/.lnd/lnd.conf
+echo "" >> /home/bitcoin/.lnd/lnd.conf
+echo "[Bitcoin]" >> /home/bitcoin/.lnd/lnd.conf
+echo "bitcoin.active=1" >> /home/bitcoin/.lnd/lnd.conf
+echo "bitcoin.mainnet=1" >> /home/bitcoin/.lnd/lnd.conf
+echo "bitcoin.node=bitcoind" >> /home/bitcoin/.lnd/lnd.conf
+echo "bitcoind.rpcuser=REPLACE_USER" >> /home/bitcoin/.lnd/lnd.conf
+echo "bitcoind.rpcpass=REPLACE_PASS" >> /home/bitcoin/.lnd/lnd.conf
+echo "bitcoind.rpchost=127.0.0.1:8332" >> /home/bitcoin/.lnd/lnd.conf
+echo "bitcoind.zmqpubrawblock=tcp://127.0.0.1:28332" >> /home/bitcoin/.lnd/lnd.conf
+echo "bitcoind.zmqpubrawtx=tcp://127.0.0.1:28333" >> /home/bitcoin/.lnd/lnd.conf
+
+chown bitcoin:bitcoin /home/bitcoin/.lnd/lnd.conf
+chmod 600 /home/bitcoin/.lnd/lnd.conf
+
+# LND systemd service
+echo "[Unit]" > /etc/systemd/system/lnd.service
+echo "Description=LND Lightning Network Daemon" >> /etc/systemd/system/lnd.service
+echo "After=bitcoind.service" >> /etc/systemd/system/lnd.service
+echo "Requires=bitcoind.service" >> /etc/systemd/system/lnd.service
+echo "" >> /etc/systemd/system/lnd.service
+echo "[Service]" >> /etc/systemd/system/lnd.service
+echo "ExecStart=/usr/local/bin/lnd --configfile=/home/bitcoin/.lnd/lnd.conf" >> /etc/systemd/system/lnd.service
+echo "User=bitcoin" >> /etc/systemd/system/lnd.service
+echo "Group=bitcoin" >> /etc/systemd/system/lnd.service
+echo "Type=simple" >> /etc/systemd/system/lnd.service
+echo "Restart=always" >> /etc/systemd/system/lnd.service
+echo "RestartSec=10" >> /etc/systemd/system/lnd.service
+echo "" >> /etc/systemd/system/lnd.service
+echo "[Install]" >> /etc/systemd/system/lnd.service
+echo "WantedBy=multi-user.target" >> /etc/systemd/system/lnd.service
+
+systemctl enable lnd.service
+
+echo "🔌 Step 13: Installing Electrum Server..."
+# ----------- Install Electrum Server -------------------------------------------
+cd /home/bitcoin
+if [ ! -d "/home/bitcoin/electrumx" ]; then
+  sudo -u bitcoin git clone https://github.com/spesmilo/electrumx.git || echo "Warning: ElectrumX clone failed"
+fi
+
+if [ -d "/home/bitcoin/electrumx" ]; then
+  cd /home/bitcoin/electrumx
+  sudo -u bitcoin python3 -m pip install -r requirements.txt || echo "Warning: ElectrumX requirements failed"
+  
+  # ElectrumX configuration
+  echo "DB_DIRECTORY=/home/bitcoin/.electrumx" > /home/bitcoin/.electrumx.env
+  echo "DAEMON_URL=http://REPLACE_USER:REPLACE_PASS@127.0.0.1:8332/" >> /home/bitcoin/.electrumx.env
+  echo "COIN=Bitcoin" >> /home/bitcoin/.electrumx.env
+  echo "NET=mainnet" >> /home/bitcoin/.electrumx.env
+  echo "HOST=0.0.0.0" >> /home/bitcoin/.electrumx.env
+  echo "TCP_PORT=50001" >> /home/bitcoin/.electrumx.env
+  echo "SSL_PORT=50002" >> /home/bitcoin/.electrumx.env
+  echo "SSL_CERTFILE=/home/bitcoin/.electrumx/cert.pem" >> /home/bitcoin/.electrumx.env
+  echo "SSL_KEYFILE=/home/bitcoin/.electrumx/key.pem" >> /home/bitcoin/.electrumx.env
+  echo "LOG_LEVEL=info" >> /home/bitcoin/.electrumx.env
+  echo "MAX_SEND=1000000" >> /home/bitcoin/.electrumx.env
+  echo "MAX_RECV=1000000" >> /home/bitcoin/.electrumx.env
+  echo "MAX_SUBS=100000" >> /home/bitcoin/.electrumx.env
+  echo "BANDWIDTH_LIMIT=2000000" >> /home/bitcoin/.electrumx.env
+  
+  mkdir -p /home/bitcoin/.electrumx
+  chown -R bitcoin:bitcoin /home/bitcoin/.electrumx
+  chown bitcoin:bitcoin /home/bitcoin/.electrumx.env
+  chmod 600 /home/bitcoin/.electrumx.env
+  
+  # ElectrumX systemd service
+  echo "[Unit]" > /etc/systemd/system/electrumx.service
+  echo "Description=ElectrumX Server" >> /etc/systemd/system/electrumx.service
+  echo "After=bitcoind.service" >> /etc/systemd/system/electrumx.service
+  echo "Requires=bitcoind.service" >> /etc/systemd/system/electrumx.service
+  echo "" >> /etc/systemd/system/electrumx.service
+  echo "[Service]" >> /etc/systemd/system/electrumx.service
+  echo "WorkingDirectory=/home/bitcoin/electrumx" >> /etc/systemd/system/electrumx.service
+  echo "ExecStart=/usr/bin/python3 /home/bitcoin/electrumx/electrumx_server" >> /etc/systemd/system/electrumx.service
+  echo "User=bitcoin" >> /etc/systemd/system/electrumx.service
+  echo "Group=bitcoin" >> /etc/systemd/system/electrumx.service
+  echo "Type=simple" >> /etc/systemd/system/electrumx.service
+  echo "Restart=always" >> /etc/systemd/system/electrumx.service
+  echo "RestartSec=10" >> /etc/systemd/system/electrumx.service
+  echo "EnvironmentFile=/home/bitcoin/.electrumx.env" >> /etc/systemd/system/electrumx.service
+  echo "" >> /etc/systemd/system/electrumx.service
+  echo "[Install]" >> /etc/systemd/system/electrumx.service
+  echo "WantedBy=multi-user.target" >> /etc/systemd/system/electrumx.service
+  
+  systemctl enable electrumx.service
+fi
+
+echo "🔐 Step 14: Setting up bootstrap RPC credentials..."
 # Bootstrap RPC credentials service
 echo "🔍 Debug: Installing bootstrap script..."
 ls -la /boot/bootstrap-rpc-creds.sh || echo "❌ Bootstrap script not found in /boot"
@@ -289,13 +419,13 @@ else
     exit 1
 fi
 
-echo "🔧 Step 13: Setting up firstboot wizard..."
+echo "🔧 Step 15: Setting up firstboot wizard..."
 # ----------- Install firstboot wizard and enable systemd oneshot ---------------
 install -m 0755 /boot/firstboot-setup.sh /usr/local/bin/firstboot-setup.sh
 cat /boot/firstboot-setup.service > /etc/systemd/system/firstboot-setup.service
 systemctl enable firstboot-setup.service
 
-echo "🌐 Step 14: Installing Flotilla Nostr Web UI..."
+echo "🌐 Step 16: Installing Flotilla Nostr Web UI..."
 # ----------- Install Flotilla Nostr Web UI and enable systemd service -----------
 cd /home/bitcoin
 if [ ! -d "/home/bitcoin/flotilla" ]; then
@@ -331,7 +461,7 @@ echo "WantedBy=multi-user.target" >> /etc/systemd/system/flotilla.service
 
 systemctl enable flotilla.service
 
-echo "🔌 Step 15: Installing Bitcoin Node API server..."
+echo "🔌 Step 17: Installing Bitcoin Node API server..."
 # ----------- Install Bitcoin Node API server (Express.js) ------------------------
 mkdir -p /home/bitcoin/server
 cp -r /boot/server/* /home/bitcoin/server/
@@ -346,7 +476,7 @@ systemctl enable btcnode-api.service
 # Ensure correct ownership
 chown -R bitcoin:bitcoin /home/bitcoin/server
 
-echo "🧹 Step 16: Final cleanup..."
+echo "🧹 Step 18: Final cleanup..."
 # ------------------------------------------------------------------------------------
 
 # Cleanup

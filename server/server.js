@@ -100,15 +100,64 @@ app.post('/api/config/btcpay', (req, res) => {
   });
 });
 
+// --- Lightning Network Status ---
+app.get('/api/lightning/status', async (req, res) => {
+  try {
+    exec('systemctl is-active lnd', (err, stdout) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ status: stdout.trim() });
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Electrum Server Status ---
+app.get('/api/electrum/status', async (req, res) => {
+  try {
+    exec('systemctl is-active electrumx', (err, stdout) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ status: stdout.trim() });
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- System Info ---
 app.get('/api/system/info', (req, res) => {
-  res.json({
-    cpu: os.cpus(),
-    mem: os.freemem(),
-    totalmem: os.totalmem(),
-    load: os.loadavg(),
-    uptime: os.uptime(),
-    hostname: os.hostname(),
+  const { exec } = require('child_process');
+  
+  // Get disk usage
+  exec('df -h / | tail -1', (err, stdout) => {
+    const diskInfo = stdout.trim().split(/\s+/);
+    
+    // Get service status
+    exec('systemctl is-active bitcoind lnd electrumx btcnode-api flotilla', (err, services) => {
+      const serviceStatus = services.trim().split('\n');
+      
+      res.json({
+        cpu: os.cpus(),
+        mem: os.freemem(),
+        totalmem: os.totalmem(),
+        load: os.loadavg(),
+        uptime: os.uptime(),
+        hostname: os.hostname(),
+        disk: {
+          total: diskInfo[1],
+          used: diskInfo[2],
+          available: diskInfo[3],
+          usage: diskInfo[4]
+        },
+        services: {
+          bitcoind: serviceStatus[0],
+          lnd: serviceStatus[1],
+          electrumx: serviceStatus[2],
+          btcnode_api: serviceStatus[3],
+          flotilla: serviceStatus[4]
+        }
+      });
+    });
   });
 });
 
