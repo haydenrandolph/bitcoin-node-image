@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  GCP_BUCKET: bitcoin-node-artifact-store
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,8 +43,42 @@ jobs:
       run: |
         xz -T0 raspi-custom.img
 
-    - name: Upload customized image
-      uses: actions/upload-artifact@v4
+    - name: Setup GCP credentials
+      uses: google-github-actions/auth@v2
       with:
-        name: raspberry-pi-bitcoin-node
-        path: raspi-custom.img.xz
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Install gcloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Upload to GCP Storage
+      run: |
+        TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+        FILENAME="raspberry-pi-bitcoin-node_${TIMESTAMP}.img.xz"
+        mv raspi-custom.img.xz "$FILENAME"
+        
+        echo "Uploading $FILENAME to gs://$GCP_BUCKET/"
+        gsutil cp "$FILENAME" "gs://$GCP_BUCKET/"
+        
+        # Create a latest symlink
+        gsutil cp "gs://$GCP_BUCKET/$FILENAME" "gs://$GCP_BUCKET/raspberry-pi-bitcoin-node_latest.img.xz"
+        
+        echo "✅ Image uploaded successfully!"
+        echo "📁 File: gs://$GCP_BUCKET/$FILENAME"
+        echo "🔗 Latest: gs://$GCP_BUCKET/raspberry-pi-bitcoin-node_latest.img.xz"
+        
+        # Output the download URL for easy access
+        echo "DOWNLOAD_URL=https://storage.googleapis.com/$GCP_BUCKET/$FILENAME" >> $GITHUB_ENV
+        echo "LATEST_URL=https://storage.googleapis.com/$GCP_BUCKET/raspberry-pi-bitcoin-node_latest.img.xz" >> $GITHUB_ENV
+
+    - name: Display download links
+      run: |
+        echo "🎉 Build completed successfully!"
+        echo ""
+        echo "📥 Download links:"
+        echo "   Latest version: $LATEST_URL"
+        echo "   This build: $DOWNLOAD_URL"
+        echo ""
+        echo "💡 To download:"
+        echo "   curl -L '$LATEST_URL' -o raspberry-pi-bitcoin-node.img.xz"
+        echo "   xz -d raspberry-pi-bitcoin-node.img.xz"
