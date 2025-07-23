@@ -479,7 +479,7 @@ fi
 # Only proceed with npm install if the directory exists
 if [ -d "/home/bitcoin/flotilla" ]; then
   cd /home/bitcoin/flotilla
-  sudo -u bitcoin npm install --production || echo "Warning: Flotilla npm install failed"
+  sudo -u bitcoin npm install --production --audit=false || echo "Warning: Flotilla npm install failed"
   sudo -u bitcoin npm run build || echo "Warning: Flotilla build failed"
 else
   echo "⚠️ Flotilla directory not found, skipping npm install"
@@ -511,10 +511,11 @@ mkdir -p /home/bitcoin/server
 cp -r /boot/server/* /home/bitcoin/server/
 chown -R bitcoin:bitcoin /home/bitcoin/server
 cd /home/bitcoin/server
-sudo -u bitcoin npm install --production
+sudo -u bitcoin npm install --production --audit=false
 
 # Copy and enable systemd service
 cp /boot/btcnode-api.service /etc/systemd/system/btcnode-api.service
+chmod 644 /etc/systemd/system/btcnode-api.service
 systemctl enable btcnode-api.service
 
 # Ensure correct ownership
@@ -560,8 +561,8 @@ sudo chmod +x $ROOT/tmp/chroot-script.sh
 sudo chroot $ROOT /tmp/chroot-script.sh
 
 # Clean up the temporary script
-sudo rm $ROOT/tmp/chroot-script.sh
-rm /tmp/chroot-script.sh
+sudo rm -f $ROOT/tmp/chroot-script.sh
+rm -f /tmp/chroot-script.sh
 
 # Step 9: Cleanup mounts and detach loop
 sudo umount $ROOT/{dev,proc,sys,boot}
