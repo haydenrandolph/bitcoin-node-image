@@ -117,11 +117,57 @@ echo "📦 Step 3: Installing required packages..."
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends \
     curl wget git ufw fail2ban htop sudo ca-certificates \
     python3-pip python3-setuptools python3-wheel \
-    libevent-2.1-7 liberror-perl git-man
+    libevent-2.1-7 liberror-perl git-man openssh-server
 
 # Clean up after package installation to free memory
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+
+echo "🔐 Step 3.5: Enabling SSH..."
+# Enable SSH service
+systemctl enable ssh
+
+# Configure SSH for better security
+echo "Port 22" > /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "Protocol 2" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "HostKey /etc/ssh/ssh_host_rsa_key" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "HostKey /etc/ssh/ssh_host_ecdsa_key" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "HostKey /etc/ssh/ssh_host_ed25519_key" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "UsePrivilegeSeparation yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "KeyRegenerationInterval 3600" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "ServerKeyBits 1024" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "SyslogFacility AUTH" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "LogLevel INFO" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "LoginGraceTime 120" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "PermitRootLogin no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "StrictModes yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "RSAAuthentication yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "AuthorizedKeysFile %h/.ssh/authorized_keys" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "IgnoreRhosts yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "RhostsRSAAuthentication no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "HostbasedAuthentication no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "PermitEmptyPasswords no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "ChallengeResponseAuthentication no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "X11Forwarding yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "X11DisplayOffset 10" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "PrintMotd no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "PrintLastLog yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "TCPKeepAlive yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "AcceptEnv LANG LC_*" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "Subsystem sftp /usr/lib/openssh/sftp-server" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+echo "UsePAM yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+
+# Create SSH directory for pi user
+mkdir -p /home/pi/.ssh
+chown pi:pi /home/pi/.ssh
+chmod 700 /home/pi/.ssh
+
+# Create SSH directory for bitcoin user
+mkdir -p /home/bitcoin/.ssh
+chown bitcoin:bitcoin /home/bitcoin/.ssh
+chmod 700 /home/bitcoin/.ssh
 
 echo "👤 Step 4: Setting up bitcoin user..."
 # ----------- Add bitcoin user if not exists ---------
@@ -488,6 +534,7 @@ echo "🌐 Web Interface Access Information:"
 echo "   - Bitcoin Node API: http://pi.local:3000"
 echo "   - Flotilla Nostr Client: http://pi.local:5173"
 echo "   - BTCPay Server: http://pi.local (after setup)"
+echo "   - SSH access: ssh pi@pi.local (password: raspberry)"
 echo "   - SSH port forward: ssh -L 3000:localhost:3000 pi@pi.local"
 echo "   - Default credentials: pi/raspberry"
 echo "   - Bitcoin user: bitcoin (no password)"

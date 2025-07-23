@@ -77,7 +77,7 @@ On first boot, the system will:
 
 ### Default Credentials
 
-- **SSH**: `pi` / `raspberry`
+- **SSH**: `pi` / `raspberry` (SSH enabled by default on port 22)
 - **Bitcoin User**: `bitcoin` (no password)
 - **RPC Credentials**: Generated automatically, stored in `/home/bitcoin/rpc-credentials.txt`
 

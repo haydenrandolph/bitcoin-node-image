@@ -111,7 +111,8 @@ echo 💡 After flashing:
 echo    - Insert SD card into Raspberry Pi
 echo    - Boot the Pi
 echo    - Access web dashboard at: http://pi.local:3000
-echo    - Default SSH: pi/raspberry
+echo    - SSH access: ssh pi@pi.local (password: raspberry)
+echo    - SSH port forward: ssh -L 3000:localhost:3000 pi@pi.local
 echo.
 echo [WARNING] ⚠️  Make sure you have a 32GB+ SD card for this image!
 echo.
