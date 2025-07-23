@@ -164,11 +164,6 @@ mkdir -p /home/pi/.ssh
 chown pi:pi /home/pi/.ssh
 chmod 700 /home/pi/.ssh
 
-# Create SSH directory for bitcoin user
-mkdir -p /home/bitcoin/.ssh
-chown bitcoin:bitcoin /home/bitcoin/.ssh
-chmod 700 /home/bitcoin/.ssh
-
 echo "👤 Step 4: Setting up bitcoin user..."
 # ----------- Add bitcoin user if not exists ---------
 if ! id bitcoin &>/dev/null; then
@@ -181,6 +176,11 @@ mkdir -p /home/bitcoin/.bitcoin
 chown -R bitcoin:bitcoin /home/bitcoin/.bitcoin
 mkdir -p /home/bitcoin/.config
 chown -R bitcoin:bitcoin /home/bitcoin/.config
+
+# Create SSH directory for bitcoin user (after user is created)
+mkdir -p /home/bitcoin/.ssh
+chown bitcoin:bitcoin /home/bitcoin/.ssh
+chmod 700 /home/bitcoin/.ssh
 
 echo "🟢 Step 5: Installing Node.js..."
 # ----------- Install Node.js 20 LTS (for API server and Flotilla) -----------
