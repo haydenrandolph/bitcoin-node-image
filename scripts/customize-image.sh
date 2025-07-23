@@ -115,9 +115,9 @@ echo "Y" | DEBIAN_FRONTEND=noninteractive dpkg --configure -a || true
 echo "📦 Step 3: Installing required packages..."
 # Essential packages for Bitcoin node and enhanced features
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends \
-    curl wget git ufw fail2ban htop sudo ca-certificates \
-    python3-pip python3-setuptools python3-wheel \
-    libevent-2.1-7 liberror-perl git-man openssh-server
+    curl wget git ca-certificates \
+    python3-pip \
+    libevent-2.1-7 liberror-perl git-man openssh-server || echo "Warning: Some packages failed to install"
 
 # Clean up after package installation to free memory
 apt-get clean
@@ -185,8 +185,7 @@ chmod 700 /home/bitcoin/.ssh
 echo "🟢 Step 5: Installing Node.js..."
 # ----------- Install Node.js 20 LTS (for API server and Flotilla) -----------
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y nodejs
-npm install -g npm@latest
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y nodejs || echo "Warning: Node.js installation failed"
 
 # Clean up after Node.js installation
 apt-get clean
@@ -202,14 +201,13 @@ rm -rf /var/lib/apt/lists/*
 echo "📦 Installing Docker using official script..."
 curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh --dry-run || sh get-docker.sh || echo "Warning: Docker installation failed"
+rm -f get-docker.sh
 
-# Alternative: Try installing from Debian backports if available
+# Alternative: Try installing from Debian bookworm main repository
 if ! command -v docker &> /dev/null; then
     echo "🔄 Trying alternative Docker installation method..."
-    # Add backports repository
-    echo "deb http://deb.debian.org/debian bullseye-backports main" >> /etc/apt/sources.list
     apt update
-    DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y docker.io docker-compose-plugin || echo "Warning: Docker installation failed"
+    DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y docker.io || echo "Warning: Docker installation failed"
 fi
 
 # Add bitcoin user to docker group if docker is available
@@ -375,7 +373,7 @@ fi
 
 if [ -d "/home/bitcoin/electrumx" ]; then
   cd /home/bitcoin/electrumx
-  sudo -u bitcoin python3 -m pip install -r requirements.txt || echo "Warning: ElectrumX requirements failed"
+  sudo -u bitcoin python3 -m pip install --no-cache-dir -r requirements.txt || echo "Warning: ElectrumX requirements failed"
   
   # ElectrumX configuration
   echo "DB_DIRECTORY=/home/bitcoin/.electrumx" > /home/bitcoin/.electrumx.env
@@ -481,7 +479,7 @@ fi
 # Only proceed with npm install if the directory exists
 if [ -d "/home/bitcoin/flotilla" ]; then
   cd /home/bitcoin/flotilla
-  sudo -u bitcoin npm install || echo "Warning: Flotilla npm install failed"
+  sudo -u bitcoin npm install --production || echo "Warning: Flotilla npm install failed"
   sudo -u bitcoin npm run build || echo "Warning: Flotilla build failed"
 else
   echo "⚠️ Flotilla directory not found, skipping npm install"
@@ -513,7 +511,7 @@ mkdir -p /home/bitcoin/server
 cp -r /boot/server/* /home/bitcoin/server/
 chown -R bitcoin:bitcoin /home/bitcoin/server
 cd /home/bitcoin/server
-sudo -u bitcoin npm install
+sudo -u bitcoin npm install --production
 
 # Copy and enable systemd service
 cp /boot/btcnode-api.service /etc/systemd/system/btcnode-api.service
@@ -525,9 +523,23 @@ chown -R bitcoin:bitcoin /home/bitcoin/server
 echo "🧹 Step 18: Final cleanup..."
 # ------------------------------------------------------------------------------------
 
+# Remove unnecessary packages to save space
+apt-get autoremove -y
+apt-get autoclean
+
 # Cleanup
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+
+# Fix repository issues by removing problematic sources
+if [ -f "/etc/apt/sources.list.d/bullseye-backports.list" ]; then
+    rm /etc/apt/sources.list.d/bullseye-backports.list
+fi
+
+# Clean up temporary files
+rm -rf /tmp/*
+rm -rf /var/tmp/*
+rm -rf /var/cache/apt/archives/*
 
 # Add helpful access information
 echo "🌐 Web Interface Access Information:"
