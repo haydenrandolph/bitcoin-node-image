@@ -12,6 +12,10 @@ echo "💡 After setup, access the web interface at: http://pi.local:3000"
 echo "   Or use SSH port forwarding: ssh -L 3000:localhost:3000 pi@pi.local"
 echo ""
 
+# Enable all services on first boot
+echo "🔧 Enabling all services..."
+/usr/local/bin/enable-services.sh
+
 # --- Wi-Fi setup ---
 read -p "WiFi SSID: " SSID
 read -s -p "WiFi Password: " WIFI_PSK

@@ -95,14 +95,19 @@ echo "   Memory: $(free -h | grep Mem | awk '{print $2}') total, $(free -h | gre
 echo "   Disk: $(df -h / | tail -1 | awk '{print $2}') total, $(df -h / | tail -1 | awk '{print $4}') available"
 echo "   Load: $(uptime | awk -F'load average:' '{print $2}')"
 
-# Create swap file if needed for memory-intensive operations
-if [ ! -f /swapfile ]; then
-    echo "🔧 Creating 1GB swap file for memory-intensive operations..."
-    fallocate -l 1G /swapfile
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+# Check if swap file already exists and is mounted
+if [ -f /swapfile ] && swapon --show | grep -q /swapfile; then
+    echo "🔧 Swap file already exists and is mounted, skipping creation..."
+else
+    # Create swap file if needed for memory-intensive operations
+    if [ ! -f /swapfile ]; then
+        echo "🔧 Creating 1GB swap file for memory-intensive operations..."
+        fallocate -l 1G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    fi
 fi
 
 # Prevent services from starting in chrooted apt operations
@@ -133,18 +138,19 @@ echo "📦 Step 3: Installing required packages..."
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends \
     curl wget git ca-certificates \
     python3-pip \
-    libevent-2.1-7 liberror-perl git-man openssh-server || echo "Warning: Some packages failed to install"
+    libevent-2.1-7 liberror-perl git-man || echo "Warning: Some packages failed to install"
 
 # Clean up after package installation to free memory
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 sync
 
-echo "🔐 Step 3.5: Enabling SSH..."
-# Enable SSH service
-systemctl enable ssh
+echo "🔐 Step 3.5: Setting up SSH configuration..."
+# Install SSH server without enabling it in chroot
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y openssh-server || echo "Warning: SSH installation failed"
 
-# Configure SSH for better security
+# Configure SSH for better security (don't enable in chroot)
+mkdir -p /etc/ssh/sshd_config.d
 echo "Port 22" > /etc/ssh/sshd_config.d/bitcoin-node.conf
 echo "Protocol 2" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
 echo "HostKey /etc/ssh/ssh_host_rsa_key" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
@@ -176,7 +182,7 @@ echo "AcceptEnv LANG LC_*" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
 echo "Subsystem sftp /usr/lib/openssh/sftp-server" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
 echo "UsePAM yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
 
-# Create SSH directory for pi user
+# Create SSH directories for users
 mkdir -p /home/pi/.ssh
 chown pi:pi /home/pi/.ssh
 chmod 700 /home/pi/.ssh
@@ -344,7 +350,8 @@ echo "" >> /etc/systemd/system/bitcoind.service
 echo "[Install]" >> /etc/systemd/system/bitcoind.service
 echo "WantedBy=multi-user.target" >> /etc/systemd/system/bitcoind.service
 
-systemctl enable bitcoind.service
+# Don't enable services in chroot - they'll be enabled on first boot
+echo "📝 Note: Services will be enabled on first boot, not in chroot"
 
 echo "⚡ Step 12: Installing Lightning Network (LND)..."
 # ----------- Install Lightning Network (LND) ------------------------------------
@@ -409,8 +416,6 @@ echo "" >> /etc/systemd/system/lnd.service
 echo "[Install]" >> /etc/systemd/system/lnd.service
 echo "WantedBy=multi-user.target" >> /etc/systemd/system/lnd.service
 
-systemctl enable lnd.service
-
 echo "🔌 Step 13: Installing Electrum Server..."
 # ----------- Install Electrum Server -------------------------------------------
 cd /home/bitcoin
@@ -461,8 +466,6 @@ if [ -d "/home/bitcoin/electrumx" ]; then
   echo "" >> /etc/systemd/system/electrumx.service
   echo "[Install]" >> /etc/systemd/system/electrumx.service
   echo "WantedBy=multi-user.target" >> /etc/systemd/system/electrumx.service
-  
-  systemctl enable electrumx.service
 fi
 
 echo "🔐 Step 14: Setting up bootstrap RPC credentials..."
@@ -503,7 +506,6 @@ cat /etc/systemd/system/bootstrap-rpc-creds.service
 echo "🔍 Debug: Verifying script exists and is executable..."
 if [ -x "/usr/local/bin/bootstrap-rpc-creds.sh" ]; then
     echo "✅ Bootstrap script is executable"
-    systemctl enable bootstrap-rpc-creds.service
 else
     echo "❌ Bootstrap script is not executable or doesn't exist"
     echo "🔍 Debug: Script status: $(ls -la /usr/local/bin/bootstrap-rpc-creds.sh 2>/dev/null || echo 'NOT FOUND')"
@@ -514,7 +516,6 @@ echo "🔧 Step 15: Setting up firstboot wizard..."
 # ----------- Install firstboot wizard and enable systemd oneshot ---------------
 install -m 0755 /boot/firstboot-setup.sh /usr/local/bin/firstboot-setup.sh
 cat /boot/firstboot-setup.service > /etc/systemd/system/firstboot-setup.service
-systemctl enable firstboot-setup.service
 
 echo "🌐 Step 16: Installing Flotilla Nostr Web UI..."
 # ----------- Install Flotilla Nostr Web UI and enable systemd service -----------
@@ -550,8 +551,6 @@ echo "" >> /etc/systemd/system/flotilla.service
 echo "[Install]" >> /etc/systemd/system/flotilla.service
 echo "WantedBy=multi-user.target" >> /etc/systemd/system/flotilla.service
 
-systemctl enable flotilla.service
-
 echo "🔌 Step 17: Installing Bitcoin Node API server..."
 # ----------- Install Bitcoin Node API server (Express.js) ------------------------
 mkdir -p /home/bitcoin/server
@@ -563,7 +562,6 @@ sudo -u bitcoin npm install --production --audit=false
 # Copy and enable systemd service
 cp /boot/btcnode-api.service /etc/systemd/system/btcnode-api.service
 chmod 644 /etc/systemd/system/btcnode-api.service
-systemctl enable btcnode-api.service
 
 # Ensure correct ownership
 chown -R bitcoin:bitcoin /home/bitcoin/server
@@ -604,6 +602,19 @@ if [ -f /swapfile ]; then
     # Remove swap entry from fstab
     sed -i '/\/swapfile/d' /etc/fstab
 fi
+
+# Create a script to enable services on first boot
+echo "#!/bin/bash" > /usr/local/bin/enable-services.sh
+echo "# Enable all services on first boot" >> /usr/local/bin/enable-services.sh
+echo "systemctl enable ssh" >> /usr/local/bin/enable-services.sh
+echo "systemctl enable bitcoind.service" >> /usr/local/bin/enable-services.sh
+echo "systemctl enable lnd.service" >> /usr/local/bin/enable-services.sh
+echo "systemctl enable electrumx.service" >> /usr/local/bin/enable-services.sh
+echo "systemctl enable btcnode-api.service" >> /usr/local/bin/enable-services.sh
+echo "systemctl enable flotilla.service" >> /usr/local/bin/enable-services.sh
+echo "systemctl enable bootstrap-rpc-creds.service" >> /usr/local/bin/enable-services.sh
+echo "systemctl enable firstboot-setup.service" >> /usr/local/bin/enable-services.sh
+chmod +x /usr/local/bin/enable-services.sh
 
 # Add helpful access information
 echo "🌐 Web Interface Access Information:"
