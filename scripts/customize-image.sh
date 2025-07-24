@@ -89,6 +89,22 @@ cat > /tmp/chroot-script.sh << 'CHROOT_SCRIPT_EOF'
 set -e
 
 echo "🔧 Step 1: Setting up chroot environment..."
+# Check available memory and system resources
+echo "🔍 System resource check:"
+echo "   Memory: $(free -h | grep Mem | awk '{print $2}') total, $(free -h | grep Mem | awk '{print $7}') available"
+echo "   Disk: $(df -h / | tail -1 | awk '{print $2}') total, $(df -h / | tail -1 | awk '{print $4}') available"
+echo "   Load: $(uptime | awk -F'load average:' '{print $2}')"
+
+# Create swap file if needed for memory-intensive operations
+if [ ! -f /swapfile ]; then
+    echo "🔧 Creating 1GB swap file for memory-intensive operations..."
+    fallocate -l 1G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 # Prevent services from starting in chrooted apt operations
 echo -e '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d
 chmod +x /usr/sbin/policy-rc.d
@@ -122,6 +138,7 @@ DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o D
 # Clean up after package installation to free memory
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+sync
 
 echo "🔐 Step 3.5: Enabling SSH..."
 # Enable SSH service
@@ -184,30 +201,45 @@ chmod 700 /home/bitcoin/.ssh
 
 echo "🟢 Step 5: Installing Node.js..."
 # ----------- Install Node.js 20 LTS (for API server and Flotilla) -----------
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+# Clear memory before Node.js installation
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+sync
+
+# Try official Node.js repository first
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash - || echo "Warning: Node.js repository setup failed"
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y nodejs || echo "Warning: Node.js installation failed"
+
+# If Node.js installation failed, try from Debian repository
+if ! command -v node &> /dev/null; then
+    echo "🔄 Trying Node.js from Debian repository..."
+    apt update
+    DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y nodejs || echo "Warning: Node.js installation completely failed"
+fi
 
 # Clean up after Node.js installation
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+sync
 
 echo "🐳 Step 6: Installing Docker..."
 # ----------- Install Docker using official method ----------------------
 # Clear apt cache to free memory
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+sync
 
-# Install Docker using the official installation script
-echo "📦 Installing Docker using official script..."
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh --dry-run || sh get-docker.sh || echo "Warning: Docker installation failed"
-rm -f get-docker.sh
+# Try installing Docker from Debian repository first (more memory efficient)
+echo "📦 Installing Docker from Debian repository..."
+apt update
+DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y docker.io || echo "Warning: Docker installation failed"
 
-# Alternative: Try installing from Debian bookworm main repository
+# If that fails, try the official script as fallback
 if ! command -v docker &> /dev/null; then
-    echo "🔄 Trying alternative Docker installation method..."
-    apt update
-    DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y docker.io || echo "Warning: Docker installation failed"
+    echo "🔄 Trying official Docker installation script..."
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh --dry-run || sh get-docker.sh || echo "Warning: Docker installation failed"
+    rm -f get-docker.sh
 fi
 
 # Add bitcoin user to docker group if docker is available
@@ -218,6 +250,11 @@ else
     echo "⚠️ Docker installation failed, BTCPay will need manual setup"
     echo "📝 Note: You can install Docker manually after first boot"
 fi
+
+# Clean up after Docker installation
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+sync
 
 echo "💰 Step 7: Setting up BTCPay Server..."
 # ----------- Clone BTCPayServer repo (docker, ARM-ready) ----------------------
@@ -250,6 +287,11 @@ chown bitcoin:bitcoin /home/bitcoin/btcpayserver/start-btcpay.sh
 
 echo "🪙 Step 9: Installing Bitcoin Core..."
 # ----------- Install Bitcoin Core -----------------------------------------------
+# Clear memory before Bitcoin installation
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+sync
+
 BITCOIN_VERSION=25.1
 cd /tmp
 wget https://bitcoincore.org/bin/bitcoin-core-${BITCOIN_VERSION}/bitcoin-${BITCOIN_VERSION}-aarch64-linux-gnu.tar.gz || echo "Warning: Bitcoin download failed"
@@ -306,6 +348,11 @@ systemctl enable bitcoind.service
 
 echo "⚡ Step 12: Installing Lightning Network (LND)..."
 # ----------- Install Lightning Network (LND) ------------------------------------
+# Clear memory before LND installation
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+sync
+
 cd /tmp
 LND_VERSION=v0.17.0-beta
 wget https://github.com/lightningnetwork/lnd/releases/download/${LND_VERSION}/lnd-linux-arm64-v${LND_VERSION}.tar.gz || echo "Warning: LND download failed"
@@ -524,6 +571,9 @@ chown -R bitcoin:bitcoin /home/bitcoin/server
 echo "🧹 Step 18: Final cleanup..."
 # ------------------------------------------------------------------------------------
 
+# Aggressive memory cleanup
+echo "🧹 Cleaning up memory and disk space..."
+
 # Remove unnecessary packages to save space
 apt-get autoremove -y
 apt-get autoclean
@@ -541,6 +591,19 @@ fi
 rm -rf /tmp/*
 rm -rf /var/tmp/*
 rm -rf /var/cache/apt/archives/*
+
+# Force memory cleanup
+sync
+echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+
+# Disable swap file to clean up
+if [ -f /swapfile ]; then
+    echo "🧹 Disabling swap file..."
+    swapoff /swapfile 2>/dev/null || true
+    rm -f /swapfile
+    # Remove swap entry from fstab
+    sed -i '/\/swapfile/d' /etc/fstab
+fi
 
 # Add helpful access information
 echo "🌐 Web Interface Access Information:"

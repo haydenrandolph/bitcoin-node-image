@@ -37,7 +37,7 @@ jobs:
       run: |
         chmod +x scripts/customize-image.sh scripts/bootstrap-rpc-creds.sh
         sudo scripts/customize-image.sh raspi-custom.img scripts/bootstrap-rpc-creds.sh
-      timeout-minutes: 60
+      timeout-minutes: 120
 
     - name: Compress image
       run: |
