@@ -30,10 +30,10 @@ echo
 
 # Test 3: Check for swap file conflict handling
 echo "✅ Test 3: Check swap file conflict handling"
-if grep -q "swapon --show" scripts/customize-image.sh; then
-    echo "  ✓ Swap file conflict detection implemented"
+if grep -q "swap file creation" scripts/customize-image.sh && grep -q "Skipping swap file creation" scripts/customize-image.sh; then
+    echo "  ✓ Swap file creation properly skipped in chroot"
 else
-    echo "  ❌ Swap file conflict detection not found"
+    echo "  ❌ Swap file creation not properly handled"
     exit 1
 fi
 echo

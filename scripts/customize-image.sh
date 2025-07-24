@@ -95,20 +95,9 @@ echo "   Memory: $(free -h | grep Mem | awk '{print $2}') total, $(free -h | gre
 echo "   Disk: $(df -h / | tail -1 | awk '{print $2}') total, $(df -h / | tail -1 | awk '{print $4}') available"
 echo "   Load: $(uptime | awk -F'load average:' '{print $2}')"
 
-# Check if swap file already exists and is mounted
-if [ -f /swapfile ] && swapon --show | grep -q /swapfile; then
-    echo "🔧 Swap file already exists and is mounted, skipping creation..."
-else
-    # Create swap file if needed for memory-intensive operations
-    if [ ! -f /swapfile ]; then
-        echo "🔧 Creating 1GB swap file for memory-intensive operations..."
-        fallocate -l 1G /swapfile
-        chmod 600 /swapfile
-        mkswap /swapfile
-        swapon /swapfile
-        echo '/swapfile none swap sw 0 0' >> /etc/fstab
-    fi
-fi
+# Note: Skipping swap file creation in chroot to avoid conflicts
+echo "🔧 Note: Skipping swap file creation in chroot environment to avoid conflicts"
+echo "🔧 Memory-intensive operations will use available RAM"
 
 # Prevent services from starting in chrooted apt operations
 echo -e '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d
@@ -594,14 +583,8 @@ rm -rf /var/cache/apt/archives/*
 sync
 echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
-# Disable swap file to clean up
-if [ -f /swapfile ]; then
-    echo "🧹 Disabling swap file..."
-    swapoff /swapfile 2>/dev/null || true
-    rm -f /swapfile
-    # Remove swap entry from fstab
-    sed -i '/\/swapfile/d' /etc/fstab
-fi
+# Note: No swap file cleanup needed since we don't create swap files in chroot
+echo "🔧 Note: No swap file cleanup needed (swap files not created in chroot)"
 
 # Create a script to enable services on first boot
 echo "#!/bin/bash" > /usr/local/bin/enable-services.sh
