@@ -24,6 +24,10 @@ if [ ! -f "$BOOTSTRAP_RPC" ]; then
     exit 1
 fi
 
+# Host memory tip for large images:
+echo "💡 If your system has low RAM, add swap BEFORE running this script:"
+echo "    sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile"
+
 # Step 1: Expand the image file (+3GB to be safe)
 echo "🧩 Expanding image size by +3GB..."
 truncate -s +3G "$IMAGE"
@@ -89,56 +93,51 @@ cat > /tmp/chroot-script.sh << 'CHROOT_SCRIPT_EOF'
 set -e
 
 echo "🔧 Step 1: Setting up chroot environment..."
-# Check available memory and system resources
 echo "🔍 System resource check:"
 echo "   Memory: $(free -h | grep Mem | awk '{print $2}') total, $(free -h | grep Mem | awk '{print $7}') available"
 echo "   Disk: $(df -h / | tail -1 | awk '{print $2}') total, $(df -h / | tail -1 | awk '{print $4}') available"
 echo "   Load: $(uptime | awk -F'load average:' '{print $2}')"
 
-# Note: Skipping swap file creation in chroot to avoid conflicts
-echo "🔧 Note: Skipping swap file creation in chroot environment to avoid conflicts"
-echo "🔧 Memory-intensive operations will use available RAM"
+# Memory optimization for APT
+echo 'APT::Acquire::Languages "none";' > /etc/apt/apt.conf.d/99translations
+echo 'Acquire::Queue-Mode "access";' > /etc/apt/apt.conf.d/99parallel
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+sync
 
 # Prevent services from starting in chrooted apt operations
 echo -e '#!/bin/sh\nexit 101' > /usr/sbin/policy-rc.d
 chmod +x /usr/sbin/policy-rc.d
 export DEBIAN_FRONTEND=noninteractive
 
-# Configure dpkg to use default options for configuration files
 echo 'Dpkg::Options::="--force-confdef";' > /etc/apt/apt.conf.d/99force-confdef
 echo 'Dpkg::Options::="--force-confold";' >> /etc/apt/apt.conf.d/99force-confdef
 
 echo "📦 Step 2: Updating packages..."
-apt update
+apt-get -o Acquire::Languages=none -o Acquire::GzipIndexes=false update
 
 # Prevent bloated kernel header upgrades
 apt-mark hold linux-headers-* linux-image-* rpi-eeprom || true
 
-# Graceful upgrade and cleanup with non-interactive flags
+# Small batch upgrades
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade -y || true
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --fix-broken install -y || true
 
-# Fix initramfs-tools configuration issue specifically
 echo "🔧 Fixing initramfs-tools configuration..."
 echo "Y" | DEBIAN_FRONTEND=noninteractive dpkg --configure -a || true
 
-echo "📦 Step 3: Installing required packages..."
-# Essential packages for Bitcoin node and enhanced features
-DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y --no-install-recommends \
-    curl wget git ca-certificates \
-    python3-pip \
-    libevent-2.1-7 liberror-perl git-man || echo "Warning: Some packages failed to install"
-
-# Clean up after package installation to free memory
+# Minimal package install in small batches:
+echo "📦 Step 3: Installing required packages (in small batches)..."
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl wget || echo "Warning: curl/wget failed"
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates || echo "Warning: git/ca-certificates failed"
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3-pip || echo "Warning: pip failed"
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libevent-2.1-7 liberror-perl git-man || echo "Warning: event/error-perl/git-man failed"
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 sync
 
 echo "🔐 Step 3.5: Setting up SSH configuration..."
-# Install SSH server without enabling it in chroot
-DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y openssh-server || echo "Warning: SSH installation failed"
-
-# Configure SSH for better security (don't enable in chroot)
+DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server || echo "Warning: SSH install failed"
 mkdir -p /etc/ssh/sshd_config.d
 echo "Port 22" > /etc/ssh/sshd_config.d/bitcoin-node.conf
 echo "Protocol 2" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
@@ -171,88 +170,62 @@ echo "AcceptEnv LANG LC_*" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
 echo "Subsystem sftp /usr/lib/openssh/sftp-server" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
 echo "UsePAM yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
 
-# Create SSH directories for users
 mkdir -p /home/pi/.ssh
 chown pi:pi /home/pi/.ssh
 chmod 700 /home/pi/.ssh
 
 echo "👤 Step 4: Setting up bitcoin user..."
-# ----------- Add bitcoin user if not exists ---------
 if ! id bitcoin &>/dev/null; then
   adduser --disabled-password --gecos "" bitcoin
 fi
-# Always create home and give ownership just in case
 mkdir -p /home/bitcoin
 chown bitcoin:bitcoin /home/bitcoin
 mkdir -p /home/bitcoin/.bitcoin
 chown -R bitcoin:bitcoin /home/bitcoin/.bitcoin
 mkdir -p /home/bitcoin/.config
 chown -R bitcoin:bitcoin /home/bitcoin/.config
-
-# Create SSH directory for bitcoin user (after user is created)
 mkdir -p /home/bitcoin/.ssh
 chown bitcoin:bitcoin /home/bitcoin/.ssh
 chmod 700 /home/bitcoin/.ssh
 
-echo "🟢 Step 5: Installing Node.js..."
-# ----------- Install Node.js 20 LTS (for API server and Flotilla) -----------
-# Clear memory before Node.js installation
+echo "🟢 Step 5: Installing Node.js (memory-optimized)..."
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 sync
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash - || echo "Warning: Node.js repo setup failed"
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+sync
+DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs || echo "Warning: Node.js install failed"
 
-# Try official Node.js repository first
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash - || echo "Warning: Node.js repository setup failed"
-DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y nodejs || echo "Warning: Node.js installation failed"
-
-# If Node.js installation failed, try from Debian repository
 if ! command -v node &> /dev/null; then
     echo "🔄 Trying Node.js from Debian repository..."
-    apt update
-    DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y nodejs || echo "Warning: Node.js installation completely failed"
+    apt-get -o Acquire::Languages=none -o Acquire::GzipIndexes=false update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs || echo "Warning: Node.js install failed"
 fi
-
-# Clean up after Node.js installation
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 sync
 
-echo "🐳 Step 6: Installing Docker..."
-# ----------- Install Docker using official method ----------------------
-# Clear apt cache to free memory
+echo "🐳 Step 6: Installing Docker (memory-optimized)..."
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 sync
-
-# Try installing Docker from Debian repository first (more memory efficient)
 echo "📦 Installing Docker from Debian repository..."
-apt update
-DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install -y docker.io || echo "Warning: Docker installation failed"
+apt-get -o Acquire::Languages=none -o Acquire::GzipIndexes=false update
+DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io || echo "Warning: Docker install failed"
 
-# If that fails, try the official script as fallback
 if ! command -v docker &> /dev/null; then
     echo "🔄 Trying official Docker installation script..."
     curl -fsSL https://get.docker.com -o get-docker.sh
     sh get-docker.sh --dry-run || sh get-docker.sh || echo "Warning: Docker installation failed"
     rm -f get-docker.sh
 fi
-
-# Add bitcoin user to docker group if docker is available
-if command -v docker &> /dev/null; then
-    usermod -aG docker bitcoin
-    echo "✅ Docker installed successfully"
-else
-    echo "⚠️ Docker installation failed, BTCPay will need manual setup"
-    echo "📝 Note: You can install Docker manually after first boot"
-fi
-
-# Clean up after Docker installation
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 sync
 
 echo "💰 Step 7: Setting up BTCPay Server..."
-# ----------- Clone BTCPayServer repo (docker, ARM-ready) ----------------------
 sudo -u bitcoin mkdir -p /home/bitcoin/btcpayserver
 cd /home/bitcoin/btcpayserver
 if [ ! -d "/home/bitcoin/btcpayserver/btcpayserver-docker" ]; then
@@ -260,14 +233,11 @@ if [ ! -d "/home/bitcoin/btcpayserver/btcpayserver-docker" ]; then
 fi
 chown -R bitcoin:bitcoin /home/bitcoin/btcpayserver
 
-# Check if Docker is available for BTCPay
 if ! command -v docker &> /dev/null; then
     echo "⚠️ Docker not available, BTCPay will need manual setup"
     echo "📝 Note: You can install Docker manually after first boot"
 fi
 
-echo "📜 Step 8: Creating BTCPay startup script..."
-# ----------- BTCPay easy startup script ---------------------------------------
 echo "#!/bin/bash" > /home/bitcoin/btcpayserver/start-btcpay.sh
 echo "cd /home/bitcoin/btcpayserver/btcpayserver-docker" >> /home/bitcoin/btcpayserver/start-btcpay.sh
 echo 'export BTCPAY_HOST="pi.local"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
@@ -278,11 +248,8 @@ echo 'export BTCPAYGEN_LIGHTNING="none"' >> /home/bitcoin/btcpayserver/start-btc
 echo ". ./btcpay-setup.sh -i" >> /home/bitcoin/btcpayserver/start-btcpay.sh
 chmod +x /home/bitcoin/btcpayserver/start-btcpay.sh
 chown bitcoin:bitcoin /home/bitcoin/btcpayserver/start-btcpay.sh
-# -------------------------------------------------------------------------------
 
 echo "🪙 Step 9: Installing Bitcoin Core..."
-# ----------- Install Bitcoin Core -----------------------------------------------
-# Clear memory before Bitcoin installation
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 sync
@@ -295,7 +262,6 @@ install -m 0755 -o root -g root -t /usr/local/bin bitcoin-${BITCOIN_VERSION}/bin
 rm -rf bitcoin-${BITCOIN_VERSION}*
 
 echo "⚙️ Step 10: Setting up Bitcoin configuration..."
-# Full node bitcoin.conf optimized for 1TB NVMe SSD
 echo "server=1" > /home/bitcoin/.bitcoin/bitcoin.conf
 echo "daemon=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
 echo "txindex=1" >> /home/bitcoin/.bitcoin/bitcoin.conf
@@ -323,7 +289,6 @@ chown bitcoin:bitcoin /home/bitcoin/.bitcoin/bitcoin.conf
 chmod 600 /home/bitcoin/.bitcoin/bitcoin.conf
 
 echo "🔧 Step 11: Creating systemd services..."
-# bitcoind systemd service
 echo "[Unit]" > /etc/systemd/system/bitcoind.service
 echo "Description=Bitcoin daemon" >> /etc/systemd/system/bitcoind.service
 echo "After=network.target" >> /etc/systemd/system/bitcoind.service
@@ -339,12 +304,9 @@ echo "" >> /etc/systemd/system/bitcoind.service
 echo "[Install]" >> /etc/systemd/system/bitcoind.service
 echo "WantedBy=multi-user.target" >> /etc/systemd/system/bitcoind.service
 
-# Don't enable services in chroot - they'll be enabled on first boot
 echo "📝 Note: Services will be enabled on first boot, not in chroot"
 
 echo "⚡ Step 12: Installing Lightning Network (LND)..."
-# ----------- Install Lightning Network (LND) ------------------------------------
-# Clear memory before LND installation
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 sync
@@ -356,11 +318,9 @@ tar -xzf lnd-linux-arm64-v${LND_VERSION}.tar.gz || echo "Warning: LND extraction
 install -m 0755 -o root -g root -t /usr/local/bin lnd-linux-arm64-v${LND_VERSION}/* || echo "Warning: LND install failed"
 rm -rf lnd-linux-arm64-v${LND_VERSION}*
 
-# Create LND directory
 mkdir -p /home/bitcoin/.lnd
 chown -R bitcoin:bitcoin /home/bitcoin/.lnd
 
-# LND configuration
 echo "[Application Options]" > /home/bitcoin/.lnd/lnd.conf
 echo "datadir=/home/bitcoin/.lnd" >> /home/bitcoin/.lnd/lnd.conf
 echo "logdir=/home/bitcoin/.lnd/logs" >> /home/bitcoin/.lnd/lnd.conf
@@ -388,7 +348,6 @@ echo "bitcoind.zmqpubrawtx=tcp://127.0.0.1:28333" >> /home/bitcoin/.lnd/lnd.conf
 chown bitcoin:bitcoin /home/bitcoin/.lnd/lnd.conf
 chmod 600 /home/bitcoin/.lnd/lnd.conf
 
-# LND systemd service
 echo "[Unit]" > /etc/systemd/system/lnd.service
 echo "Description=LND Lightning Network Daemon" >> /etc/systemd/system/lnd.service
 echo "After=bitcoind.service" >> /etc/systemd/system/lnd.service
@@ -406,7 +365,6 @@ echo "[Install]" >> /etc/systemd/system/lnd.service
 echo "WantedBy=multi-user.target" >> /etc/systemd/system/lnd.service
 
 echo "🔌 Step 13: Installing Electrum Server..."
-# ----------- Install Electrum Server -------------------------------------------
 cd /home/bitcoin
 if [ ! -d "/home/bitcoin/electrumx" ]; then
   sudo -u bitcoin git clone https://github.com/spesmilo/electrumx.git || echo "Warning: ElectrumX clone failed"
@@ -416,7 +374,6 @@ if [ -d "/home/bitcoin/electrumx" ]; then
   cd /home/bitcoin/electrumx
   sudo -u bitcoin python3 -m pip install --no-cache-dir -r requirements.txt || echo "Warning: ElectrumX requirements failed"
   
-  # ElectrumX configuration
   echo "DB_DIRECTORY=/home/bitcoin/.electrumx" > /home/bitcoin/.electrumx.env
   echo "DAEMON_URL=http://REPLACE_USER:REPLACE_PASS@127.0.0.1:8332/" >> /home/bitcoin/.electrumx.env
   echo "COIN=Bitcoin" >> /home/bitcoin/.electrumx.env
@@ -437,7 +394,6 @@ if [ -d "/home/bitcoin/electrumx" ]; then
   chown bitcoin:bitcoin /home/bitcoin/.electrumx.env
   chmod 600 /home/bitcoin/.electrumx.env
   
-  # ElectrumX systemd service
   echo "[Unit]" > /etc/systemd/system/electrumx.service
   echo "Description=ElectrumX Server" >> /etc/systemd/system/electrumx.service
   echo "After=bitcoind.service" >> /etc/systemd/system/electrumx.service
@@ -458,8 +414,6 @@ if [ -d "/home/bitcoin/electrumx" ]; then
 fi
 
 echo "🔐 Step 14: Setting up bootstrap RPC credentials..."
-# Bootstrap RPC credentials service
-echo "🔍 Debug: Installing bootstrap script..."
 ls -la /boot/bootstrap-rpc-creds.sh || echo "❌ Bootstrap script not found in /boot"
 echo "🔍 Debug: File name check: $(basename /boot/bootstrap-rpc-creds.sh)"
 echo "🔍 Debug: File name length: $(basename /boot/bootstrap-rpc-creds.sh | wc -c)"
@@ -468,13 +422,11 @@ echo "🔍 Debug: Bootstrap script installed to /usr/local/bin/"
 ls -la /usr/local/bin/bootstrap-rpc-creds.sh || echo "❌ Failed to install bootstrap script"
 echo "🔍 Debug: Installed file name: $(basename /usr/local/bin/bootstrap-rpc-creds.sh)"
 
-# Test the script execution
 echo "🔍 Debug: Testing bootstrap script execution..."
 echo "🔍 Debug: Script shebang: $(head -1 /usr/local/bin/bootstrap-rpc-creds.sh)"
 echo "🔍 Debug: Script permissions: $(ls -la /usr/local/bin/bootstrap-rpc-creds.sh)"
 /usr/local/bin/bootstrap-rpc-creds.sh || echo "❌ Bootstrap script execution failed"
 
-# Create bootstrap service file using echo to avoid heredoc issues
 echo "[Unit]" > /etc/systemd/system/bootstrap-rpc-creds.service
 echo "Description=Bootstrap RPC Credentials for Bitcoin" >> /etc/systemd/system/bootstrap-rpc-creds.service
 echo "After=network.target" >> /etc/systemd/system/bootstrap-rpc-creds.service
@@ -487,12 +439,8 @@ echo "" >> /etc/systemd/system/bootstrap-rpc-creds.service
 echo "[Install]" >> /etc/systemd/system/bootstrap-rpc-creds.service
 echo "WantedBy=multi-user.target" >> /etc/systemd/system/bootstrap-rpc-creds.service
 
-# Verify the service file was created correctly
-echo "🔍 Debug: Service file contents:"
 cat /etc/systemd/system/bootstrap-rpc-creds.service
 
-# Verify the script exists and is executable
-echo "🔍 Debug: Verifying script exists and is executable..."
 if [ -x "/usr/local/bin/bootstrap-rpc-creds.sh" ]; then
     echo "✅ Bootstrap script is executable"
 else
@@ -502,18 +450,15 @@ else
 fi
 
 echo "🔧 Step 15: Setting up firstboot wizard..."
-# ----------- Install firstboot wizard and enable systemd oneshot ---------------
 install -m 0755 /boot/firstboot-setup.sh /usr/local/bin/firstboot-setup.sh
 cat /boot/firstboot-setup.service > /etc/systemd/system/firstboot-setup.service
 
 echo "🌐 Step 16: Installing Flotilla Nostr Web UI..."
-# ----------- Install Flotilla Nostr Web UI and enable systemd service -----------
 cd /home/bitcoin
 if [ ! -d "/home/bitcoin/flotilla" ]; then
   sudo -u bitcoin git clone https://github.com/coracle-social/flotilla.git || echo "Warning: Flotilla clone failed"
 fi
 
-# Only proceed with npm install if the directory exists
 if [ -d "/home/bitcoin/flotilla" ]; then
   cd /home/bitcoin/flotilla
   sudo -u bitcoin npm install --production --audit=false || echo "Warning: Flotilla npm install failed"
@@ -522,7 +467,6 @@ else
   echo "⚠️ Flotilla directory not found, skipping npm install"
 fi
 
-# Update package.json start script if it exists
 if [ -f "package.json" ]; then
   sed -i "s/\"start\":.*/\"start\": \"vite preview --host 0.0.0.0\",/" package.json || true
 fi
@@ -541,52 +485,35 @@ echo "[Install]" >> /etc/systemd/system/flotilla.service
 echo "WantedBy=multi-user.target" >> /etc/systemd/system/flotilla.service
 
 echo "🔌 Step 17: Installing Bitcoin Node API server..."
-# ----------- Install Bitcoin Node API server (Express.js) ------------------------
 mkdir -p /home/bitcoin/server
 cp -r /boot/server/* /home/bitcoin/server/
 chown -R bitcoin:bitcoin /home/bitcoin/server
 cd /home/bitcoin/server
 sudo -u bitcoin npm install --production --audit=false
 
-# Copy and enable systemd service
 cp /boot/btcnode-api.service /etc/systemd/system/btcnode-api.service
 chmod 644 /etc/systemd/system/btcnode-api.service
-
-# Ensure correct ownership
 chown -R bitcoin:bitcoin /home/bitcoin/server
 
 echo "🧹 Step 18: Final cleanup..."
-# ------------------------------------------------------------------------------------
-
-# Aggressive memory cleanup
-echo "🧹 Cleaning up memory and disk space..."
-
-# Remove unnecessary packages to save space
 apt-get autoremove -y
 apt-get autoclean
-
-# Cleanup
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
-# Fix repository issues by removing problematic sources
 if [ -f "/etc/apt/sources.list.d/bullseye-backports.list" ]; then
     rm /etc/apt/sources.list.d/bullseye-backports.list
 fi
 
-# Clean up temporary files
 rm -rf /tmp/*
 rm -rf /var/tmp/*
 rm -rf /var/cache/apt/archives/*
 
-# Force memory cleanup
 sync
 echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
-# Note: No swap file cleanup needed since we don't create swap files in chroot
 echo "🔧 Note: No swap file cleanup needed (swap files not created in chroot)"
 
-# Create a script to enable services on first boot
 echo "#!/bin/bash" > /usr/local/bin/enable-services.sh
 echo "# Enable all services on first boot" >> /usr/local/bin/enable-services.sh
 echo "systemctl enable ssh" >> /usr/local/bin/enable-services.sh
@@ -599,7 +526,6 @@ echo "systemctl enable bootstrap-rpc-creds.service" >> /usr/local/bin/enable-ser
 echo "systemctl enable firstboot-setup.service" >> /usr/local/bin/enable-services.sh
 chmod +x /usr/local/bin/enable-services.sh
 
-# Add helpful access information
 echo "🌐 Web Interface Access Information:"
 echo "   - Bitcoin Node API: http://pi.local:3000"
 echo "   - Flotilla Nostr Client: http://pi.local:5173"
