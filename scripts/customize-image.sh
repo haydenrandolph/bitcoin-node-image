@@ -453,7 +453,16 @@ echo "🔧 Step 15: Setting up firstboot wizard..."
 install -m 0755 /boot/firstboot-setup.sh /usr/local/bin/firstboot-setup.sh
 cat /boot/firstboot-setup.service > /etc/systemd/system/firstboot-setup.service
 
+# Ensure timeout command is available
+if ! command -v timeout &> /dev/null; then
+  echo "⚠️ timeout command not found, installing coreutils..."
+  apt-get install -y coreutils || echo "Warning: Failed to install coreutils"
+fi
+
 echo "🌐 Step 16: Installing Flotilla Nostr Web UI..."
+echo "   Note: Flotilla may fail to build due to missing dependencies."
+echo "   If build fails, the system will continue without Flotilla."
+echo "   You can manually install it later if needed."
 cd /home/bitcoin
 if [ ! -d "/home/bitcoin/flotilla" ]; then
   sudo -u bitcoin git clone https://github.com/coracle-social/flotilla.git || echo "Warning: Flotilla clone failed"
@@ -461,35 +470,251 @@ fi
 
 if [ -d "/home/bitcoin/flotilla" ]; then
   cd /home/bitcoin/flotilla
-  sudo -u bitcoin npm install --production --audit=false || echo "Warning: Flotilla npm install failed"
-  sudo -u bitcoin npm run build || echo "Warning: Flotilla build failed"
+  echo "🔍 Debug: Flotilla directory found, checking package.json..."
+  
+  if [ -f "package.json" ]; then
+    echo "🔍 Debug: package.json found, checking build scripts..."
+    cat package.json | grep -E '"scripts"' -A 10 || echo "No scripts section found"
+    
+    # Install all dependencies (including dev dependencies needed for build)
+    echo "📦 Installing Flotilla dependencies..."
+    echo "   This may take several minutes..."
+    timeout 600 sudo -u bitcoin npm install --audit=false || echo "Warning: Flotilla npm install failed (timeout or error)"
+    
+    # Check if build script exists
+    if grep -q '"build"' package.json; then
+      echo "🔨 Attempting to build Flotilla..."
+      echo "   This may take several minutes..."
+      timeout 900 sudo -u bitcoin npm run build || echo "Warning: Flotilla build failed (timeout or error)"
+      
+      # Check if build created output directory
+      if [ -d "dist" ] || [ -d "build" ]; then
+        echo "✅ Build succeeded, updating start script for production..."
+        if [ -f "package.json" ]; then
+          sed -i 's/"start":.*/"start": "vite preview --host 0.0.0.0",/' package.json || true
+        fi
+      else
+        echo "🔄 Build failed, trying alternative approach with dev server..."
+        # Try alternative approach - install only production deps and use dev server
+        timeout 300 sudo -u bitcoin npm install --production --audit=false || echo "Warning: Flotilla production install failed"
+        
+        # Update package.json to use dev server instead of build
+        if [ -f "package.json" ]; then
+          sed -i 's/"start":.*/"start": "vite --host 0.0.0.0",/' package.json || true
+          sed -i 's/"dev":.*/"dev": "vite --host 0.0.0.0",/' package.json || true
+        fi
+        
+        # If still failing, create a simple alternative
+        if [ ! -f "package.json" ] || ! grep -q '"start"' package.json; then
+          echo "⚠️ Flotilla installation completely failed, creating simple alternative..."
+          # Remove the problematic Flotilla directory
+          cd /home/bitcoin
+          rm -rf flotilla
+          echo "✅ Removed problematic Flotilla installation"
+        fi
+      fi
+    else
+      echo "⚠️ No build script found, using dev server..."
+      # No build script, use dev server
+      if [ -f "package.json" ]; then
+        sed -i 's/"start":.*/"start": "vite --host 0.0.0.0",/' package.json || true
+      fi
+    fi
+  else
+    echo "⚠️ package.json not found in Flotilla directory"
+  fi
 else
   echo "⚠️ Flotilla directory not found, skipping npm install"
 fi
 
-if [ -f "package.json" ]; then
-  sed -i "s/\"start\":.*/\"start\": \"vite preview --host 0.0.0.0\",/" package.json || true
-fi
+# Create a simple fallback Nostr web interface if Flotilla fails
+echo "🔧 Creating fallback Nostr web interface..."
+mkdir -p /home/bitcoin/nostr-fallback
+cat > /home/bitcoin/nostr-fallback/index.html << 'NOSTR_FALLBACK_EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nostr Client - Bitcoin Node</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a1a; color: #fff; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .section { background: #2a2a2a; padding: 20px; margin: 20px 0; border-radius: 8px; }
+        .input-group { margin: 10px 0; }
+        input, textarea { width: 100%; padding: 10px; margin: 5px 0; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #28a745; }
+        .error { background: #dc3545; }
+        .info { background: #17a2b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🟢 Nostr Client - Bitcoin Node</h1>
+            <p>Simple Nostr client for your Bitcoin node</p>
+        </div>
+        
+        <div class="section">
+            <h2>📝 Create Note</h2>
+            <div class="input-group">
+                <textarea id="noteContent" placeholder="Enter your note content..." rows="4"></textarea>
+            </div>
+            <button onclick="createNote()">📤 Publish Note</button>
+            <div id="noteStatus"></div>
+        </div>
+        
+        <div class="section">
+            <h2>🔍 Search Notes</h2>
+            <div class="input-group">
+                <input type="text" id="searchQuery" placeholder="Enter search terms...">
+            </div>
+            <button onclick="searchNotes()">🔍 Search</button>
+            <div id="searchResults"></div>
+        </div>
+        
+        <div class="section">
+            <h2>⚙️ Configuration</h2>
+            <div class="input-group">
+                <label>Relay URL:</label>
+                <input type="text" id="relayUrl" value="wss://relay.damus.io" placeholder="Enter relay URL">
+            </div>
+            <div class="input-group">
+                <label>Private Key (hex):</label>
+                <input type="password" id="privateKey" placeholder="Enter your private key">
+            </div>
+            <button onclick="saveConfig()">💾 Save Configuration</button>
+            <div id="configStatus"></div>
+        </div>
+        
+        <div class="section">
+            <h2>📊 Status</h2>
+            <div id="connectionStatus" class="status info">Not connected to relay</div>
+            <button onclick="connectToRelay()">🔌 Connect to Relay</button>
+        </div>
+    </div>
+    
+    <script>
+        let relay = null;
+        let connected = false;
+        
+        function showStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `status ${type}`;
+        }
+        
+        function connectToRelay() {
+            const relayUrl = document.getElementById('relayUrl').value;
+            if (!relayUrl) {
+                showStatus('connectionStatus', 'Please enter a relay URL', 'error');
+                return;
+            }
+            
+            try {
+                relay = new WebSocket(relayUrl);
+                relay.onopen = () => {
+                    connected = true;
+                    showStatus('connectionStatus', 'Connected to relay', 'success');
+                };
+                relay.onclose = () => {
+                    connected = false;
+                    showStatus('connectionStatus', 'Disconnected from relay', 'error');
+                };
+                relay.onerror = (error) => {
+                    connected = false;
+                    showStatus('connectionStatus', 'Connection error: ' + error.message, 'error');
+                };
+            } catch (error) {
+                showStatus('connectionStatus', 'Failed to connect: ' + error.message, 'error');
+            }
+        }
+        
+        function createNote() {
+            if (!connected) {
+                showStatus('noteStatus', 'Please connect to a relay first', 'error');
+                return;
+            }
+            
+            const content = document.getElementById('noteContent').value;
+            if (!content) {
+                showStatus('noteStatus', 'Please enter note content', 'error');
+                return;
+            }
+            
+            // Simple note creation (in a real implementation, you'd use proper Nostr libraries)
+            const note = {
+                kind: 1,
+                content: content,
+                created_at: Math.floor(Date.now() / 1000),
+                tags: []
+            };
+            
+            showStatus('noteStatus', 'Note created (demo mode - not actually sent)', 'success');
+        }
+        
+        function searchNotes() {
+            if (!connected) {
+                showStatus('searchResults', 'Please connect to a relay first', 'error');
+                return;
+            }
+            
+            const query = document.getElementById('searchQuery').value;
+            if (!query) {
+                showStatus('searchResults', 'Please enter search terms', 'error');
+                return;
+            }
+            
+            showStatus('searchResults', `Searching for: "${query}" (demo mode)`, 'info');
+        }
+        
+        function saveConfig() {
+            const relayUrl = document.getElementById('relayUrl').value;
+            const privateKey = document.getElementById('privateKey').value;
+            
+            if (relayUrl && privateKey) {
+                showStatus('configStatus', 'Configuration saved (demo mode)', 'success');
+            } else {
+                showStatus('configStatus', 'Please fill in all fields', 'error');
+            }
+        }
+    </script>
+</body>
+</html>
+NOSTR_FALLBACK_EOF
 
-echo "[Unit]" > /etc/systemd/system/flotilla.service
-echo "Description=Flotilla Nostr Web UI" >> /etc/systemd/system/flotilla.service
-echo "After=network.target btcnode-api.service" >> /etc/systemd/system/flotilla.service
-echo "" >> /etc/systemd/system/flotilla.service
-echo "[Service]" >> /etc/systemd/system/flotilla.service
-echo "WorkingDirectory=/home/bitcoin/flotilla" >> /etc/systemd/system/flotilla.service
-echo "ExecStart=/usr/bin/npm run start" >> /etc/systemd/system/flotilla.service
-echo "User=bitcoin" >> /etc/systemd/system/flotilla.service
-echo "Restart=always" >> /etc/systemd/system/flotilla.service
-echo "" >> /etc/systemd/system/flotilla.service
-echo "[Install]" >> /etc/systemd/system/flotilla.service
-echo "WantedBy=multi-user.target" >> /etc/systemd/system/flotilla.service
+chown -R bitcoin:bitcoin /home/bitcoin/nostr-fallback
+echo "✅ Fallback Nostr interface created at /home/bitcoin/nostr-fallback/index.html"
+
+# Only create Flotilla service if the directory exists and has a package.json
+if [ -d "/home/bitcoin/flotilla" ] && [ -f "/home/bitcoin/flotilla/package.json" ]; then
+  echo "[Unit]" > /etc/systemd/system/flotilla.service
+  echo "Description=Flotilla Nostr Web UI" >> /etc/systemd/system/flotilla.service
+  echo "After=network.target btcnode-api.service" >> /etc/systemd/system/flotilla.service
+  echo "" >> /etc/systemd/system/flotilla.service
+  echo "[Service]" >> /etc/systemd/system/flotilla.service
+  echo "WorkingDirectory=/home/bitcoin/flotilla" >> /etc/systemd/system/flotilla.service
+  echo "ExecStart=/usr/bin/npm run start" >> /etc/systemd/system/flotilla.service
+  echo "User=bitcoin" >> /etc/systemd/system/flotilla.service
+  echo "Restart=always" >> /etc/systemd/system/flotilla.service
+  echo "" >> /etc/systemd/system/flotilla.service
+  echo "[Install]" >> /etc/systemd/system/flotilla.service
+  echo "WantedBy=multi-user.target" >> /etc/systemd/system/flotilla.service
+  echo "✅ Flotilla service created"
+else
+  echo "⚠️ Flotilla service not created (directory or package.json not found)"
+fi
 
 echo "🔌 Step 17: Installing Bitcoin Node API server..."
 mkdir -p /home/bitcoin/server
 cp -r /boot/server/* /home/bitcoin/server/
 chown -R bitcoin:bitcoin /home/bitcoin/server
 cd /home/bitcoin/server
-sudo -u bitcoin npm install --production --audit=false
+sudo -u bitcoin npm install --production --audit=false || echo "Warning: Bitcoin Node API npm install failed"
 
 cp /boot/btcnode-api.service /etc/systemd/system/btcnode-api.service
 chmod 644 /etc/systemd/system/btcnode-api.service
@@ -521,14 +746,22 @@ echo "systemctl enable bitcoind.service" >> /usr/local/bin/enable-services.sh
 echo "systemctl enable lnd.service" >> /usr/local/bin/enable-services.sh
 echo "systemctl enable electrumx.service" >> /usr/local/bin/enable-services.sh
 echo "systemctl enable btcnode-api.service" >> /usr/local/bin/enable-services.sh
-echo "systemctl enable flotilla.service" >> /usr/local/bin/enable-services.sh
+echo "# Conditionally enable Flotilla if it exists" >> /usr/local/bin/enable-services.sh
+echo "if [ -f '/etc/systemd/system/flotilla.service' ]; then" >> /usr/local/bin/enable-services.sh
+echo "  systemctl enable flotilla.service" >> /usr/local/bin/enable-services.sh
+echo "fi" >> /usr/local/bin/enable-services.sh
 echo "systemctl enable bootstrap-rpc-creds.service" >> /usr/local/bin/enable-services.sh
 echo "systemctl enable firstboot-setup.service" >> /usr/local/bin/enable-services.sh
 chmod +x /usr/local/bin/enable-services.sh
 
 echo "🌐 Web Interface Access Information:"
 echo "   - Bitcoin Node API: http://pi.local:3000"
-echo "   - Flotilla Nostr Client: http://pi.local:5173"
+if [ -d "/home/bitcoin/flotilla" ] && [ -f "/home/bitcoin/flotilla/package.json" ]; then
+  echo "   - Flotilla Nostr Client: http://pi.local:5173"
+else
+  echo "   - Flotilla Nostr Client: Not installed (build issues)"
+  echo "   - Fallback Nostr Interface: http://pi.local:3000/nostr-fallback"
+fi
 echo "   - BTCPay Server: http://pi.local (after setup)"
 echo "   - SSH access: ssh pi@pi.local (password: raspberry)"
 echo "   - SSH port forward: ssh -L 3000:localhost:3000 pi@pi.local"

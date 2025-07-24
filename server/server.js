@@ -161,6 +161,9 @@ app.get('/api/system/info', (req, res) => {
   });
 });
 
+// --- Serve fallback Nostr interface ---
+app.use('/nostr-fallback', express.static('/home/bitcoin/nostr-fallback'));
+
 // --- Serve UI files ---
 app.use(express.static(path.join(__dirname, 'ui')));
 const PORT = process.env.PORT || 3000;

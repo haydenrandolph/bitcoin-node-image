@@ -30,7 +30,7 @@ echo
 
 # Test 3: Check for swap file conflict handling
 echo "✅ Test 3: Check swap file conflict handling"
-if grep -q "swap file creation" scripts/customize-image.sh && grep -q "Skipping swap file creation" scripts/customize-image.sh; then
+if grep -q "swap file cleanup" scripts/customize-image.sh && grep -q "swap files not created in chroot" scripts/customize-image.sh; then
     echo "  ✓ Swap file creation properly skipped in chroot"
 else
     echo "  ❌ Swap file creation not properly handled"
@@ -118,6 +118,26 @@ else
 fi
 echo
 
+# Test 12: Check Flotilla improvements
+echo "✅ Test 12: Check Flotilla build improvements"
+if grep -q "timeout.*npm install" scripts/customize-image.sh && grep -q "Fallback Nostr Interface" scripts/customize-image.sh; then
+    echo "  ✓ Flotilla build improvements found"
+else
+    echo "  ❌ Flotilla build improvements not found"
+    exit 1
+fi
+echo
+
+# Test 13: Check conditional service creation
+echo "✅ Test 13: Check conditional Flotilla service creation"
+if grep -q "Only create Flotilla service if" scripts/customize-image.sh; then
+    echo "  ✓ Conditional Flotilla service creation found"
+else
+    echo "  ❌ Conditional Flotilla service creation not found"
+    exit 1
+fi
+echo
+
 echo "🎉 All validation tests passed!"
 echo
 echo "📋 Summary of fixes applied:"
@@ -128,5 +148,7 @@ echo "  ✓ Memory management improvements"
 echo "  ✓ Error handling enhancements"
 echo "  ✓ Bootstrap script robustness"
 echo "  ✓ Security improvements"
+echo "  ✓ Flotilla build improvements with fallback"
+echo "  ✓ Conditional service creation"
 echo
 echo "🚀 Build process should now complete successfully!" 
