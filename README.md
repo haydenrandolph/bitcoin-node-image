@@ -1,6 +1,8 @@
-# Bitcoin Node Raspberry Pi Image
+# FML Moody Node - Bitcoin Full Node
 
-A pre-configured Raspberry Pi OS image that automatically sets up a complete Bitcoin node with additional services including BTCPay Server, Flotilla Nostr client, and a web-based management interface.
+⚡ **Feelin' Moody? Stack sats.** ⚡
+
+A pre-configured Raspberry Pi image that automatically sets up a complete Bitcoin full node with Lightning Network, Nostr client, and Electrum server. Built for non-technical users who want a plug-and-play Bitcoin node experience.
 
 ## Features
 
@@ -9,12 +11,13 @@ A pre-configured Raspberry Pi OS image that automatically sets up a complete Bit
 - **Electrum Server** - ElectrumX server for wallet connectivity
 - **BTCPay Server** - Complete Bitcoin payment processor
 - **Flotilla** - Nostr social media client
-- **Web Dashboard** - Management interface at `http://pi.local:3000`
-- **WiFi Configuration** - Easy network setup
+- **Web Dashboard** - Management interface at `http://moody-node.local:3000`
+- **WiFi Configuration** - Simple setup wizard with visual feedback
 - **Automatic RPC Credentials** - Secure credential generation
 - **Systemd Services** - All services run automatically on boot
 - **Storage Monitoring** - Real-time disk usage and service status
-- **Optimized for 1TB NVMe SSD** - Full node performance with fast sync
+- **Optimized for 1TB SSD** - Full node performance with fast sync
+- **Plug & Play** - Perfect for non-technical users
 
 ## Quick Start
 
@@ -69,27 +72,39 @@ See [GCP_SETUP.md](GCP_SETUP.md) for instructions on setting up automated builds
 
 ## First Boot Setup
 
-On first boot, the system will:
+On first boot, connect:
+- **Power cable** to the Moody Node
+- **HDMI monitor** (temporarily, for WiFi setup)
+- **USB keyboard** (temporarily, for WiFi setup)
 
-1. **Generate secure RPC credentials** for Bitcoin Core
-2. **Start the web interface** at `http://pi.local:3000`
-3. **Enable all services** (Bitcoin Core, BTCPay, Flotilla)
+The setup wizard will guide you through:
+
+1. **Mode Selection**: Choose Simple (recommended) or Advanced setup
+2. **WiFi Configuration**: Enter your network name and password
+3. **Optional Services** (Advanced mode): Select which services to enable
+4. **Automatic Configuration**: Secure credentials generated automatically
+
+After setup completes, the system reboots and you can:
+- **Disconnect monitor and keyboard** (no longer needed!)
+- **Access from your phone/laptop** at `http://moody-node.local:3000`
 
 ### Default Credentials
 
-- **SSH**: `pi` / `raspberry` (SSH enabled by default on port 22)
-- **Bitcoin User**: `bitcoin` (no password)
-- **RPC Credentials**: Generated automatically, stored in `/home/bitcoin/rpc-credentials.txt`
+- **SSH**: `pi` / `raspberry` - **Change this immediately!**
+- **Bitcoin User**: `bitcoin` (system user, no login)
+- **RPC Credentials**: Auto-generated, view via dashboard or `/home/bitcoin/rpc-credentials.txt`
 
-## Web Interface
+## Web Dashboard
 
-Access the management dashboard at `http://pi.local:3000` to:
+Access from any device on your network: `http://moody-node.local:3000`
 
-- Configure WiFi settings
-- Adjust Bitcoin node parameters
-- Start BTCPay Server
-- Generate Nostr keys
-- Monitor system status
+Features:
+- **Real-time Bitcoin sync status** - See blockchain download progress
+- **WiFi management** - Update WiFi settings without monitor
+- **Node configuration** - Adjust Bitcoin Core parameters
+- **Lightning & Electrum status** - Monitor all services
+- **System resources** - CPU, memory, disk usage
+- **Nostr client access** - Link to Flotilla at `:5173`
 
 ## Services
 
@@ -112,38 +127,40 @@ Access the management dashboard at `http://pi.local:3000` to:
 - **Features**: Wallet connectivity, transaction history
 
 ### BTCPay Server
-- **URL**: `http://pi.local` (after setup)
+- **URL**: `http://moody-node.local` (after setup via dashboard)
 - **Setup Script**: `/home/bitcoin/btcpayserver/start-btcpay.sh`
 - **Docker-based installation**
 
 ### Flotilla Nostr Client
-- **URL**: `http://pi.local:5173`
+- **URL**: `http://moody-node.local:5173`
 - **Directory**: `/home/bitcoin/flotilla`
+- **Purpose**: Decentralized social communication on Nostr
 
 ### Web API Server
 - **Port**: 3000
-- **URL**: `http://pi.local:3000`
-- **Features**: Bitcoin status, WiFi config, system monitoring
+- **URL**: `http://moody-node.local:3000`
+- **Features**: Bitcoin status, WiFi config, Lightning/Electrum monitoring, system resources
 
 ## Configuration
 
 ### WiFi Setup
-```bash
-# Via web interface at http://pi.local:3000
-# Or manually edit /etc/wpa_supplicant/wpa_supplicant.conf
-```
+Configure WiFi in two ways:
+1. **First boot wizard** (recommended) - Interactive setup with password confirmation
+2. **Web dashboard** - `http://moody-node.local:3000` → WiFi Setup section
+3. **Manual** (advanced) - Edit `/etc/wpa_supplicant/wpa_supplicant.conf`
 
 ### Bitcoin Configuration
-```bash
-# Via web interface or edit /home/bitcoin/.bitcoin/bitcoin.conf
-# Key settings: prune, dbcache, maxconnections
-```
+Adjust node settings:
+1. **Web dashboard** - Update max connections, dbcache, pruning
+2. **Manual** (advanced) - Edit `/home/bitcoin/.bitcoin/bitcoin.conf`
+
+**Note:** RPC credentials are auto-generated and preserved across config changes.
 
 ### RPC Access
-```bash
-# Get credentials from /home/bitcoin/rpc-credentials.txt
-# Or use the web interface to view them
-```
+View credentials:
+1. **Web dashboard** - System info section
+2. **SSH** - `cat /home/bitcoin/rpc-credentials.txt`
+3. **Via API** - `http://moody-node.local:3000/api/bitcoin/status`
 
 ## Development
 
@@ -199,12 +216,20 @@ To use the download scripts, you need to save your GCP service account key as `g
    - Verify disk space: `df -h`
 
 3. **Web interface not accessible**
+   - Verify you're on the same WiFi network as the Moody Node
+   - Try accessing via IP: Check router for device IP address
    - Check if service is running: `sudo systemctl status btcnode-api`
    - Verify port 3000 is open: `netstat -tlnp | grep 3000`
+   - Try from SSH tunnel: `ssh -L 3000:localhost:3000 pi@moody-node.local`
 
 4. **BTCPay Server issues**
    - Ensure Docker is installed: `docker --version`
    - Check BTCPay logs: `docker logs btcpayserver_btcpayserver_1`
+
+5. **Hostname not resolving (moody-node.local)**
+   - Some Android devices don't support mDNS/Bonjour
+   - Use IP address instead (check your router)
+   - Or install "Bonjour Browser" app to find the device
 
 ### Logs
 
@@ -224,26 +249,31 @@ sudo journalctl -f
 
 ## Security Considerations
 
-- Change default SSH password
-- Use firewall rules (UFW is pre-installed)
-- Keep system updated: `sudo apt update && sudo apt upgrade`
-- Monitor disk space for Bitcoin blockchain
-- Consider using a VPN for remote access
+**IMPORTANT - Do these first!**
+1. ✅ **Change default SSH password**: `passwd` (current: raspberry)
+2. ✅ **Set up firewall**: UFW is pre-installed, configure as needed
+3. ✅ **Keep system updated**: `sudo apt update && sudo apt upgrade`
+4. ✅ **Monitor disk space**: Bitcoin blockchain grows continuously
+5. ✅ **Secure your network**: Use strong WiFi password, consider VPN for remote access
+6. ✅ **Back up credentials**: Save `/home/bitcoin/rpc-credentials.txt` securely
 
-## Contributing
+## What's Included
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test with `scripts/test-syntax.sh`
-5. Submit a pull request
+- ⚡ **Lightning Network** - Instant Bitcoin payments & routing
+- 🟣 **Nostr Client** - Decentralized social communication
+- 💼 **Electrum Server** - Connect your own Bitcoin wallet
+- 💰 **BTCPay Server** - Optional payment processor for merchants
+- 📊 **Web Dashboard** - Monitor everything from your phone
+- 🔐 **Auto RPC Credentials** - Secure by default
 
-## License
+## FML - Feelin' Moody?
 
-This project is open source. See individual component licenses for details.
+This is more than just a Bitcoin node. It's your gateway to financial sovereignty.
+
+**Stack sats. Stay humble. Feelin' Moody.**
 
 ## Support
 
-- GitHub Issues: [Create an issue](https://github.com/your-repo/issues)
-- Documentation: Check the scripts and configuration files
-- Community: Bitcoin and BTCPay Server communities 
+- Built with ❤️ by the FML team
+- Questions? Issues? Check the GitHub repo
+- Community: Join us on Nostr using your Moody Node! 

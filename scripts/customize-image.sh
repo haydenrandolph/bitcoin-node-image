@@ -136,39 +136,54 @@ apt-get clean
 rm -rf /var/lib/apt/lists/*
 sync
 
-echo "🔐 Step 3.5: Setting up SSH configuration..."
+echo "🔐 Step 3.5: Setting hostname and SSH configuration..."
+# Set hostname to moody-node
+echo "moody-node" > /etc/hostname
+sed -i 's/127.0.1.1.*/127.0.1.1\tmoody-node/' /etc/hosts || echo "127.0.1.1\tmoody-node" >> /etc/hosts
+
 DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server || echo "Warning: SSH install failed"
 mkdir -p /etc/ssh/sshd_config.d
-echo "Port 22" > /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "Protocol 2" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "HostKey /etc/ssh/ssh_host_rsa_key" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "HostKey /etc/ssh/ssh_host_ecdsa_key" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "HostKey /etc/ssh/ssh_host_ed25519_key" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "UsePrivilegeSeparation yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "KeyRegenerationInterval 3600" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "ServerKeyBits 1024" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "SyslogFacility AUTH" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "LogLevel INFO" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "LoginGraceTime 120" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "PermitRootLogin no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "StrictModes yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "RSAAuthentication yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "AuthorizedKeysFile %h/.ssh/authorized_keys" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "IgnoreRhosts yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "RhostsRSAAuthentication no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "HostbasedAuthentication no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "PermitEmptyPasswords no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "ChallengeResponseAuthentication no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "X11Forwarding yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "X11DisplayOffset 10" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "PrintMotd no" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "PrintLastLog yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "TCPKeepAlive yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "AcceptEnv LANG LC_*" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "Subsystem sftp /usr/lib/openssh/sftp-server" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
-echo "UsePAM yes" >> /etc/ssh/sshd_config.d/bitcoin-node.conf
+
+# Modern SSH configuration (removed deprecated options)
+cat > /etc/ssh/sshd_config.d/moody-node.conf << 'SSH_CONFIG'
+# Network
+Port 22
+
+# Host Keys
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+# Logging
+SyslogFacility AUTH
+LogLevel INFO
+
+# Authentication
+LoginGraceTime 120
+PermitRootLogin no
+StrictModes yes
+PubkeyAuthentication yes
+AuthorizedKeysFile %h/.ssh/authorized_keys
+IgnoreRhosts yes
+HostbasedAuthentication no
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+PasswordAuthentication yes
+UsePAM yes
+
+# X11 Forwarding
+X11Forwarding yes
+X11DisplayOffset 10
+
+# Misc
+PrintMotd no
+PrintLastLog yes
+TCPKeepAlive yes
+AcceptEnv LANG LC_*
+
+# SFTP
+Subsystem sftp /usr/lib/openssh/sftp-server
+SSH_CONFIG
 
 mkdir -p /home/pi/.ssh
 chown pi:pi /home/pi/.ssh
@@ -240,7 +255,7 @@ fi
 
 echo "#!/bin/bash" > /home/bitcoin/btcpayserver/start-btcpay.sh
 echo "cd /home/bitcoin/btcpayserver/btcpayserver-docker" >> /home/bitcoin/btcpayserver/start-btcpay.sh
-echo 'export BTCPAY_HOST="pi.local"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
+echo 'export BTCPAY_HOST="moody-node.local"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
 echo 'export NBITCOIN_NETWORK="mainnet"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
 echo 'export BTCPAYGEN_CRYPTO1="btc"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
 echo 'export BTCPAYGEN_REVERSEPROXY="nginx"' >> /home/bitcoin/btcpayserver/start-btcpay.sh
@@ -312,8 +327,8 @@ rm -rf /var/lib/apt/lists/*
 sync
 
 cd /tmp
-LND_VERSION=v0.17.0-beta
-wget https://github.com/lightningnetwork/lnd/releases/download/${LND_VERSION}/lnd-linux-arm64-v${LND_VERSION}.tar.gz || echo "Warning: LND download failed"
+LND_VERSION=0.17.0-beta
+wget https://github.com/lightningnetwork/lnd/releases/download/v${LND_VERSION}/lnd-linux-arm64-v${LND_VERSION}.tar.gz || echo "Warning: LND download failed"
 tar -xzf lnd-linux-arm64-v${LND_VERSION}.tar.gz || echo "Warning: LND extraction failed"
 install -m 0755 -o root -g root -t /usr/local/bin lnd-linux-arm64-v${LND_VERSION}/* || echo "Warning: LND install failed"
 rm -rf lnd-linux-arm64-v${LND_VERSION}*
@@ -754,21 +769,19 @@ echo "systemctl enable bootstrap-rpc-creds.service" >> /usr/local/bin/enable-ser
 echo "systemctl enable firstboot-setup.service" >> /usr/local/bin/enable-services.sh
 chmod +x /usr/local/bin/enable-services.sh
 
-echo "🌐 Web Interface Access Information:"
-echo "   - Bitcoin Node API: http://pi.local:3000"
+echo "🌐 Moody Node Access Information:"
+echo "   - Dashboard: http://moody-node.local:3000"
 if [ -d "/home/bitcoin/flotilla" ] && [ -f "/home/bitcoin/flotilla/package.json" ]; then
-  echo "   - Flotilla Nostr Client: http://pi.local:5173"
+  echo "   - Nostr Client: http://moody-node.local:5173"
 else
-  echo "   - Flotilla Nostr Client: Not installed (build issues)"
-  echo "   - Fallback Nostr Interface: http://pi.local:3000/nostr-fallback"
+  echo "   - Nostr Client: Not installed (build issues)"
+  echo "   - Fallback Nostr: http://moody-node.local:3000/nostr-fallback"
 fi
-echo "   - BTCPay Server: http://pi.local (after setup)"
-echo "   - SSH access: ssh pi@pi.local (password: raspberry)"
-echo "   - SSH port forward: ssh -L 3000:localhost:3000 pi@pi.local"
-echo "   - Default credentials: pi/raspberry"
-echo "   - Bitcoin user: bitcoin (no password)"
-
-echo "✅ Chroot customization complete!"
+echo "   - BTCPay Server: http://moody-node.local (after setup)"
+echo "   - SSH: ssh pi@moody-node.local (password: raspberry)"
+echo "   - Port forward: ssh -L 3000:localhost:3000 pi@moody-node.local"
+echo ""
+echo "✅ FML Moody Node - Chroot customization complete!"
 CHROOT_SCRIPT_EOF
 
 # Copy the script to the chroot environment and execute it

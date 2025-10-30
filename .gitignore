@@ -1,7 +1,11 @@
-# GCP Service Account Keys
+# GCP Service Account Keys & Sensitive Files
 gcp-service-account-key.json
 *.json.key
 service-account-*.json
+*.pem
+*.key
+*-key.json
+rpc-credentials.txt
 
 # Downloaded images
 *.img
